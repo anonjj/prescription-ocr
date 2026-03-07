@@ -38,7 +38,12 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
 
             for split_name in ds:
                 split = ds[split_name]
-                for idx, sample in enumerate(split):
+                print(f"              Extracting split: {split_name} ({len(split)} samples)")
+                
+                # Import tqdm for progress tracking
+                from tqdm import tqdm
+                
+                for idx, sample in enumerate(tqdm(split, desc=f"              {split_name}")):
                     # Try common column names for image
                     img = None
                     for col in ["image", "img", "pixel_values"]:
