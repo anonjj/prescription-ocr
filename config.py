@@ -41,7 +41,7 @@ IDX_TO_CHAR = {i + 1: ch for i, ch in enumerate(CHARS)}
 # ──────────────────────────────────────────────
 # Training hyperparameters
 # ──────────────────────────────────────────────
-BATCH_SIZE = 32
+BATCH_SIZE = 64  # Optimized for T4 GPU (was 32)
 LEARNING_RATE = 1e-3
 NUM_EPOCHS = 50
 PATIENCE = 10  # early stopping

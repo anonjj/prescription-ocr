@@ -99,6 +99,8 @@ import time
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from torch.cuda.amp import autocast, GradScaler
+from tqdm.auto import tqdm
 
 sys.path.insert(0, '/content/Projecat')
 from config import (
@@ -118,10 +120,22 @@ os.makedirs(LOCAL_CKPT_DIR, exist_ok=True)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'Device: {device}')
 
-# Load Data
-train_dataset = HandwritingDataset(os.path.join(PROCESSED_DIR, 'train.csv'), full_pipeline=False)
-val_dataset = HandwritingDataset(os.path.join(PROCESSED_DIR, 'val.csv'), full_pipeline=False)
+# Load Data with tensor caching (eliminates disk I/O after epoch 1)
+train_dataset = HandwritingDataset(
+    os.path.join(PROCESSED_DIR, 'train.csv'),
+    full_pipeline=False,
+    cache_tensors=True  # Cache in RAM after first load
+)
+val_dataset = HandwritingDataset(
+    os.path.join(PROCESSED_DIR, 'val.csv'),
+    full_pipeline=False,
+    cache_tensors=True
+)
 print(f'Train: {len(train_dataset)}, Val: {len(val_dataset)}')
+
+# Estimate cache memory: ~64KB per image tensor (1x64x256 float32)
+cache_mb = (len(train_dataset) + len(val_dataset)) * 64 / 1024
+print(f'Estimated cache size: {cache_mb:.1f} MB')
 
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
                           collate_fn=collate_fn, num_workers=0, pin_memory=True)
@@ -133,6 +147,10 @@ model = CRNN().to(device)
 ctc_loss = nn.CTCLoss(blank=BLANK_LABEL, zero_infinity=True)
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=LR_STEP_SIZE, gamma=LR_GAMMA)
+
+# Mixed precision training (AMP) for ~30% speedup on T4
+scaler = GradScaler()
+use_amp = device.type == 'cuda'
 
 # Resume from checkpoint if available
 start_epoch = 0
@@ -158,24 +176,31 @@ for epoch in range(start_epoch, NUM_EPOCHS):
     n_batches = 0
     t0 = time.time()
 
-    for images, labels, label_lengths, texts in train_loader:
-        images = images.to(device)
-        labels = labels.to(device)
+    pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}', leave=False)
+    for images, labels, label_lengths, texts in pbar:
+        images = images.to(device, non_blocking=True)
+        labels = labels.to(device, non_blocking=True)
 
-        outputs = model(images)
-        seq_len = outputs.size(0)
-        bs = images.size(0)
-        input_lengths = torch.full((bs,), seq_len, dtype=torch.long)
+        optimizer.zero_grad(set_to_none=True)  # Slightly faster than zero_grad()
 
-        loss = ctc_loss(outputs, labels, input_lengths, label_lengths)
+        # Mixed precision forward pass
+        with autocast(enabled=use_amp):
+            outputs = model(images)
+            seq_len = outputs.size(0)
+            bs = images.size(0)
+            input_lengths = torch.full((bs,), seq_len, dtype=torch.long, device=device)
+            loss = ctc_loss(outputs, labels, input_lengths, label_lengths.to(device))
 
-        optimizer.zero_grad()
-        loss.backward()
+        # Mixed precision backward pass
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
-        optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
 
         total_loss += loss.item()
         n_batches += 1
+        pbar.set_postfix({'loss': f'{loss.item():.4f}'})
 
     scheduler.step()
     avg_train_loss = total_loss / max(n_batches, 1)
@@ -189,22 +214,23 @@ for epoch in range(start_epoch, NUM_EPOCHS):
 
     with torch.no_grad():
         for images, labels, label_lengths, texts in val_loader:
-            images = images.to(device)
-            labels = labels.to(device)
+            images = images.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
 
-            outputs = model(images)
-            seq_len = outputs.size(0)
-            bs = images.size(0)
-            input_lengths = torch.full((bs,), seq_len, dtype=torch.long)
+            with autocast(enabled=use_amp):
+                outputs = model(images)
+                seq_len = outputs.size(0)
+                bs = images.size(0)
+                input_lengths = torch.full((bs,), seq_len, dtype=torch.long, device=device)
+                loss = ctc_loss(outputs, labels, input_lengths, label_lengths.to(device))
 
-            loss = ctc_loss(outputs, labels, input_lengths, label_lengths)
             val_loss_total += loss.item() * bs
 
             _, preds = outputs.max(2)
-            preds = preds.permute(1, 0)
+            preds = preds.permute(1, 0).cpu()
 
             for i in range(bs):
-                pred_text = decode_prediction(preds[i].cpu().tolist())
+                pred_text = decode_prediction(preds[i].tolist())
                 val_cer_total += compute_cer(pred_text, texts[i])
                 val_wer_total += compute_wer(pred_text, texts[i])
                 val_n += 1
@@ -227,14 +253,14 @@ for epoch in range(start_epoch, NUM_EPOCHS):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'best_cer': best_cer,
             }, os.path.join(ckpt_dir, 'best_model.pt'))
-        print(f'         ↳ Best model saved (CER: {best_cer:.4f})')
+        print(f'         -> Best model saved (CER: {best_cer:.4f})')
     else:
         patience_counter += 1
         if patience_counter >= PATIENCE:
             print(f'\\nEarly stopping at epoch {epoch+1}')
             break
 
-    # Save periodic checkpoint to Drivera
+    # Save periodic checkpoint to Drive
     if (epoch + 1) % 5 == 0:
         torch.save({
             'epoch': epoch,

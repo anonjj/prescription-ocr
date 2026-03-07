@@ -21,10 +21,13 @@ class HandwritingDataset(Dataset):
     Each row has: image_path, text_label, source_dataset, granularity, is_noisy_label
     """
 
-    def __init__(self, csv_path: str, full_pipeline: bool = True, max_label_len: int = 50):
+    def __init__(self, csv_path: str, full_pipeline: bool = True, max_label_len: int = 50,
+                 cache_tensors: bool = False):
         self.full_pipeline = full_pipeline
         self.max_label_len = max_label_len
+        self.cache_tensors = cache_tensors
         self.samples = []
+        self._cache = {}  # idx -> img_tensor (populated on first access)
 
         with open(csv_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
@@ -49,16 +52,24 @@ class HandwritingDataset(Dataset):
     def __getitem__(self, idx):
         sample = self.samples[idx]
 
-        # Load and preprocess image
-        try:
-            img = preprocess_image(sample["image_path"], full_pipeline=self.full_pipeline)
-        except Exception:
-            # Return a blank image if preprocessing fails
-            import numpy as np
-            img = np.ones((IMG_HEIGHT, IMG_WIDTH), dtype="uint8") * 255
+        # Check cache first (avoids disk I/O after first epoch)
+        if self.cache_tensors and idx in self._cache:
+            img_tensor = self._cache[idx]
+        else:
+            # Load and preprocess image
+            try:
+                img = preprocess_image(sample["image_path"], full_pipeline=self.full_pipeline)
+            except Exception:
+                # Return a blank image if preprocessing fails
+                import numpy as np
+                img = np.ones((IMG_HEIGHT, IMG_WIDTH), dtype="uint8") * 255
 
-        # Convert to tensor: (H, W) → (1, H, W), normalized to [0, 1]
-        img_tensor = torch.FloatTensor(img).unsqueeze(0) / 255.0
+            # Convert to tensor: (H, W) → (1, H, W), normalized to [0, 1]
+            img_tensor = torch.FloatTensor(img).unsqueeze(0) / 255.0
+
+            # Cache for subsequent epochs
+            if self.cache_tensors:
+                self._cache[idx] = img_tensor
 
         label_tensor = torch.IntTensor(sample["encoded_label"])
 
