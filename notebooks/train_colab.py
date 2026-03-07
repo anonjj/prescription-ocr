@@ -31,19 +31,11 @@ print("✓ Setup complete")
 """
 
 # ============================================================
-# CELL 2: Upload Project Files (Option A: Upload zip)
+# CELL 2: Clone from GitHub
 # ============================================================
 """
-# Option A: Upload project as a zip file
-from google.colab import files
-uploaded = files.upload()  # Upload Projecat.zip
-
-!unzip -q Projecat.zip -d /content/
+!git clone https://github.com/anonjj/prescription-ocr.git Projecat
 %cd /content/Projecat
-
-# Option B: Clone from GitHub (if you push the code there)
-# !git clone https://github.com/yourusername/Projecat.git
-# %cd /content/Projecat
 """
 
 # ============================================================
