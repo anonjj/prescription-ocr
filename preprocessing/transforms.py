@@ -19,8 +19,8 @@ def to_grayscale(img: np.ndarray) -> np.ndarray:
 
 
 def denoise(img: np.ndarray) -> np.ndarray:
-    """Apply non-local means denoising."""
-    return cv2.fastNlMeansDenoising(img, h=10, templateWindowSize=7, searchWindowSize=21)
+    """Apply median blur denoising (fast)."""
+    return cv2.medianBlur(img, 3)
 
 
 def enhance_contrast(img: np.ndarray) -> np.ndarray:
