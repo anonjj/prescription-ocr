@@ -119,14 +119,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'Device: {device}')
 
 # Load Data
-train_dataset = HandwritingDataset(os.path.join(PROCESSED_DIR, 'train.csv'))
-val_dataset = HandwritingDataset(os.path.join(PROCESSED_DIR, 'val.csv'))
+train_dataset = HandwritingDataset(os.path.join(PROCESSED_DIR, 'train.csv'), full_pipeline=False)
+val_dataset = HandwritingDataset(os.path.join(PROCESSED_DIR, 'val.csv'), full_pipeline=False)
 print(f'Train: {len(train_dataset)}, Val: {len(val_dataset)}')
 
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
-                          collate_fn=collate_fn, num_workers=2, pin_memory=True)
+                          collate_fn=collate_fn, num_workers=0, pin_memory=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False,
-                        collate_fn=collate_fn, num_workers=2, pin_memory=True)
+                        collate_fn=collate_fn, num_workers=0, pin_memory=True)
 
 # Model
 model = CRNN().to(device)
@@ -234,7 +234,7 @@ for epoch in range(start_epoch, NUM_EPOCHS):
             print(f'\\nEarly stopping at epoch {epoch+1}')
             break
 
-    # Save periodic checkpoint to Drive
+    # Save periodic checkpoint to Drivera
     if (epoch + 1) % 5 == 0:
         torch.save({
             'epoch': epoch,
