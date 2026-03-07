@@ -1,0 +1,21 @@
+# Data
+data/raw/
+data/processed/
+
+# Models
+models/checkpoints/
+*.pt
+*.pth
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
