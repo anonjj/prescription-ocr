@@ -27,7 +27,7 @@ def evaluate(split: str = "test", checkpoint: str = None,
         print(f"  Data not found: {csv_path}")
         return
 
-    dataset = HandwritingDataset(csv_path, full_pipeline=True)
+    dataset = HandwritingDataset(csv_path, full_pipeline=False)
     if max_samples:
         dataset.samples = dataset.samples[:max_samples]
 
