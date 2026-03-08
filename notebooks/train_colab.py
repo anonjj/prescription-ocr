@@ -121,14 +121,15 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'Device: {device}')
 
 # Load Data with tensor caching (eliminates disk I/O after epoch 1)
+# full_pipeline=True applies: denoise, CLAHE, threshold, deskew
 train_dataset = HandwritingDataset(
     os.path.join(PROCESSED_DIR, 'train.csv'),
-    full_pipeline=False,
+    full_pipeline=True,
     cache_tensors=True  # Cache in RAM after first load
 )
 val_dataset = HandwritingDataset(
     os.path.join(PROCESSED_DIR, 'val.csv'),
-    full_pipeline=False,
+    full_pipeline=True,
     cache_tensors=True
 )
 print(f'Train: {len(train_dataset)}, Val: {len(val_dataset)}')
@@ -276,6 +277,7 @@ print(f'\\nTraining complete! Best CER: {best_cer:.4f}')
 # CELL 7: Evaluate
 # ============================================================
 """
+%cd /content/Projecat
 !python model/evaluate.py --split test --save-predictions --checkpoint /content/drive/MyDrive/ocr_project/checkpoints/best_model.pt
 """
 

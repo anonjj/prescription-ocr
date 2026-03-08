@@ -43,9 +43,9 @@ IDX_TO_CHAR = {i + 1: ch for i, ch in enumerate(CHARS)}
 # ──────────────────────────────────────────────
 BATCH_SIZE = 64  # Optimized for T4 GPU (was 32)
 LEARNING_RATE = 1e-3
-NUM_EPOCHS = 50
-PATIENCE = 10  # early stopping
-LR_STEP_SIZE = 15
+NUM_EPOCHS = 100  # Extended for longer training
+PATIENCE = 15  # early stopping
+LR_STEP_SIZE = 25  # Decay LR every 25 epochs (was 15)
 LR_GAMMA = 0.1
 NUM_WORKERS = 2
 
