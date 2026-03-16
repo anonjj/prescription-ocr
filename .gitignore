@@ -13,6 +13,14 @@ __pycache__/
 .venv/
 venv/
 
+# Android
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/gradle/
+android/*.hprof
+
 # IDE
 .vscode/
 .idea/
@@ -20,3 +28,4 @@ venv/
 # OS
 .DS_Store
 kaggle.json
+dummy_prescription.jpg

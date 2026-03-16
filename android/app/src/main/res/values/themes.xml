@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App-wide Material 3 theme -->
+    <style name="Theme.PrescriptionOCR" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">#1A237E</item>
+        <item name="colorPrimaryVariant">#283593</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#7986CB</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+    </style>
+</resources>

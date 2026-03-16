@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    FileProvider paths — tells Android where this app is allowed to share files.
+    The camera writes the captured photo to external-files-path (app-private Pictures folder).
+-->
+<paths>
+    <external-files-path
+        name="my_images"
+        path="Pictures/" />
+</paths>

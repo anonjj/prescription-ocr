@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Prescription OCR</string>
+    <string name="btn_gallery">Gallery</string>
+    <string name="btn_camera">Camera</string>
+    <string name="btn_recognise">Recognise Text</string>
+    <string name="result_header">OCR Result</string>
+    <string name="image_preview_desc">Selected prescription image preview</string>
+</resources>
