@@ -2,11 +2,11 @@
 # Doctor Handwriting Recognition Project
 ### Machine Learning Project Documentation
 
-**Project Topic:** Recognition of Doctor's Handwritten Prescriptions  
-**Language Scope:** English only  
-**Recognition Level:** Word / Line level  
-**Author:** Student Project  
-**Date:** 2026-03-07
+**Project Topic:** Recognition of Doctor's Handwritten Prescriptions
+**Language Scope:** English only
+**Recognition Level:** Word / Line level
+**Author:** Student Project
+**Last Updated:** 2026-03-16
 
 ---
 
@@ -14,17 +14,11 @@
 
 The goal of this project is to develop a **machine learning system capable of recognizing handwritten medical prescriptions written by doctors**.
 
-The system will:
-- Accept **images of handwritten prescriptions**
-- Recognize **words or lines**
-- Convert them into **machine readable text**
-
-The focus is specifically on:
-
-- English handwriting
-- Pen-on-paper writing
-- Doctor style prescription writing
-- Word and line recognition
+The system:
+- Accepts **images of handwritten prescriptions**
+- Recognizes **words or lines** and converts them into **machine-readable text**
+- Runs **fully on-device** via an Android application (no internet required)
+- Extracts structured fields: dosage, frequency, duration
 
 This project is strictly a **research / academic prototype** and **not intended for clinical use**.
 
@@ -32,453 +26,322 @@ This project is strictly a **research / academic prototype** and **not intended 
 
 # 2. Motivation
 
-Healthcare systems still rely heavily on handwritten prescriptions.  
-Manual transcription can cause errors and inefficiencies.
+Healthcare systems still rely heavily on handwritten prescriptions. Manual transcription can cause errors and inefficiencies.
 
-Optical Character Recognition (OCR) systems can automatically convert:
+Handwritten prescription recognition is challenging because of:
+- Highly variable handwriting styles between doctors
+- Medical abbreviations and shorthand
+- Poor scan or photo quality
+- Overlapping and connected characters
 
-- handwritten text
-- printed text
-
-into digital text for storage and analysis.
-
-However, handwritten prescription recognition remains challenging because of:
-
-- highly variable handwriting styles
-- medical abbreviations
-- poor scan quality
-- overlapping characters
-
-Therefore, this project aims to explore modern machine learning methods to improve handwriting recognition for prescriptions.
+This project explores modern deep learning methods (CRNN + CTC) to address these challenges.
 
 ---
 
-# 3. Key Challenges
+# 3. System Architecture
 
-Important technical challenges include:
-
-1. Handwriting variability between doctors
-2. Image noise or low contrast
-3. Cursive writing with connected characters
-4. Medical abbreviations
-5. Small datasets of prescription handwriting
-
-These challenges require a pipeline that includes:
-
-- preprocessing
-- segmentation
-- feature extraction
-- recognition
-- post‑processing
-
----
-
-# 4. System Architecture
-
-The proposed OCR pipeline:
+The full pipeline:
 
 ```
-Image Input
-     ↓
+Image Input  (camera or gallery)
+      ↓
 Image Preprocessing
-     ↓
-Text Segmentation
-     ↓
-Feature Extraction
-     ↓
-Recognition Model
-     ↓
-Post Processing
-     ↓
+  • Grayscale conversion
+  • Denoising (median blur)
+  • Contrast enhancement (CLAHE)
+  • Adaptive binarisation
+  • Deskew
+  • Resize + pad to 64 × 256
+      ↓
+CRNN Model  (CNN → BiLSTM → CTC)
+      ↓
+CTC Greedy Decode
+      ↓
+Post-Processing
+  • Fuzzy medical dictionary correction
+  • Dosage / frequency / duration extraction
+  • Confidence scoring + review flag
+      ↓
 Final Text Output
 ```
 
 ---
 
-# 5. Dataset Strategy
+# 4. Model Architecture — CRNN + CTC
 
-Datasets are divided into **three categories**:
-
-1. General handwriting datasets
-2. Prescription-specific datasets
-3. Stress testing datasets
-
-## 5.1 General Handwriting (Pretraining)
-
-These teach the model how handwriting works.
-
-### IAM Line Dataset
-- ~10.4k handwritten text lines
-- Train / validation / test splits
-
-### IAM Words Dataset
-- ~115k handwritten word images
-
-These datasets help the model learn:
-
-- character shapes
-- writing styles
-- spacing patterns
-
----
-
-## 5.2 Prescription Specific Datasets
-
-These datasets represent the **actual target domain**.
-
-### Doctor Handwritten Prescription BD Dataset (Kaggle)
-
-Word-level dataset of real prescriptions.
-
-Typical structure:
+The implemented model is a **Convolutional Recurrent Neural Network (CRNN)** trained with **CTC (Connectionist Temporal Classification)** loss.
 
 ```
-train/
-validation/
-test/
+CNN Feature Extractor  →  BiLSTM Sequence Model  →  Linear + Log-Softmax  →  CTC
 ```
 
-Used for **fine-tuning** the model.
+### CNN Backbone
 
----
+| Block | Input → Output | Operation |
+|-------|---------------|-----------|
+| Block 1 | 1 → 64 | Conv3×3, BN, ReLU, MaxPool 2×2 |
+| Block 2 | 64 → 128 | Conv3×3, BN, ReLU, MaxPool 2×2 |
+| Block 3 | 128 → 256 | 2× Conv3×3, BN, ReLU, MaxPool 2×1 |
+| Block 4 | 256 → 512 | 2× Conv3×3, BN, ReLU, MaxPool 2×1 |
+| Block 5 | 512 → 512 | Conv3×3, BN, ReLU, AdaptiveAvgPool → height 1 |
 
-### OCR Processed Handwritten Prescriptions (Kaggle)
+### BiLSTM
 
-Dataset created from OCR outputs.
+- Hidden size: 256 (×2 bidirectional = 512)
+- Layers: 2
+- Dropout: 0.3
 
-Important note:
+### Output
 
-- labels may contain noise
-- used mainly for evaluation or weak supervision
+- Linear: 512 → NUM\_CLASSES (79 characters + CTC blank)
+- Log-softmax over character dimension
 
----
-
-### Medical Prescription Handwritten Words (HuggingFace)
-
-Small dataset containing around **46 labeled medical words**.
-
-Example words:
-
-- Amoxicillin
-- Fever
-- Tablet
-- Syrup
-
-Used mainly for:
-
-- quick testing
-- sanity checks
-
----
-
-## 5.3 Stress Test Dataset
-
-### Illegible Medical Prescription Images
-
-Contains extremely messy prescriptions.
-
-Purpose:
-
-- robustness testing
-- evaluating model behavior in difficult cases
-
-Not used for training.
-
----
-
-# 6. Dataset Selection Rule
-
-Recommended training hierarchy:
-
-### Stage 1 — Pretraining
-
-Train model on:
-
-- IAM Line dataset
-- IAM Words dataset
-
-Goal:
-
-Learn general handwriting patterns.
-
----
-
-### Stage 2 — Domain Fine‑Tuning
-
-Fine‑tune using:
-
-- Doctor Prescription BD dataset
-
-Goal:
-
-Adapt model to medical writing styles.
-
----
-
-### Stage 3 — Evaluation
-
-Evaluate on:
-
-- OCR processed prescription dataset
-- Illegible prescriptions dataset
-
-Goal:
-
-Measure robustness and real‑world performance.
-
----
-
-# 7. Model Architecture Options
-
-Two main model approaches are recommended.
-
-## 7.1 CRNN + CTC
-
-Architecture:
+### Character Set
 
 ```
-CNN → BiLSTM → CTC Decoder
+ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,-/'()+
 ```
 
-Advantages:
+---
 
-- Efficient training
-- Works well for word recognition
-- Lightweight enough for student projects
+# 5. Training
+
+### Environment
+
+Training was performed on **Google Colab** (NVIDIA T4 GPU) due to the MacBook Air development machine lacking a GPU.
+
+### Hyperparameters
+
+| Parameter | Value |
+|-----------|-------|
+| Batch size | 64 |
+| Learning rate | 1e-3 |
+| LR decay | ×0.1 every 25 epochs |
+| Max epochs | 100 |
+| Early stopping patience | 15 |
+| Optimiser | Adam |
+| Loss | CTC |
+
+### Results
+
+| Metric | Value |
+|--------|-------|
+| Best CER | **0.2840** (28.4%) |
+| Best epoch | 32 |
+| Early stopping | Epoch 48 |
+
+CER of 28.4% means approximately 28 characters are misrecognised per 100 characters — reasonable for a CRNN trained from scratch on prescription data.
 
 ---
 
-## 7.2 Transformer OCR (Donut / TrOCR)
+# 6. Preprocessing Pipeline
 
-Transformer based architecture.
+Implemented in `preprocessing/transforms.py`:
 
-Advantages:
+| Step | Function | Purpose |
+|------|----------|---------|
+| Grayscale | `to_grayscale` | Remove colour information |
+| Denoise | `denoise` | Median blur to remove scan noise |
+| Contrast | `enhance_contrast` | CLAHE for adaptive contrast |
+| Binarise | `adaptive_threshold` | Adaptive Gaussian thresholding |
+| Deskew | `deskew` | Correct rotation using `minAreaRect` |
+| Resize | `resize_pad` | Scale to 64 px height, pad width to 256 px |
 
-- end‑to‑end document understanding
-- strong OCR capability
-
-But:
-
-- heavier to train
-- requires more compute
-
----
-
-# 8. Preprocessing Pipeline
-
-Before training, images are processed using:
-
-1. grayscale conversion
-2. adaptive thresholding
-3. noise removal
-4. skew correction
-5. contrast enhancement
-6. resizing
-
-Purpose:
-
-Improve recognition accuracy.
+**Input:** any image file
+**Output:** `numpy.ndarray` of shape `(64, 256)`, `uint8`
 
 ---
 
-# 9. Segmentation Strategy
+# 7. Post-Processing
 
-Segmentation splits the prescription into:
+Implemented across three modules:
 
-- lines
-- words
+### `postprocessing/lexicon.py`
+- Fuzzy-matches each recognised word against a medical dictionary
+- Uses RapidFuzz with an 80-point similarity threshold
 
-Techniques used:
+### `postprocessing/rules.py`
+- Regex-based extraction of:
+  - **Dosage** (e.g. `500 mg`, `1 tablet`)
+  - **Frequency** (e.g. `twice daily`, `1-0-1`)
+  - **Duration** (e.g. `7 days`, `2 weeks`)
 
-- connected component analysis
-- contour detection
-- projection profiles
-
-If dataset already contains word crops, segmentation can be skipped.
-
----
-
-# 10. Post Processing
-
-Post processing improves predictions.
-
-Techniques include:
-
-- medical dictionary matching
-- fuzzy string matching
-- dosage pattern detection
-
-Examples of dosage patterns:
-
-```
-500 mg
-1-0-1
-2 times daily
-```
-
-Low confidence predictions will be flagged for **human review**.
+### `postprocessing/confidence.py`
+- Computes a confidence score from the model's log-probabilities
+- Flags predictions below 0.6 as `NEEDS_REVIEW`
 
 ---
 
-# 11. Evaluation Metrics
+# 8. Dataset Strategy
 
-Key metrics used:
+Training used a combination of:
 
-### CER
-Character Error Rate
+| Dataset | Source | Purpose |
+|---------|--------|---------|
+| IAM Line | HuggingFace — Teklia/IAM-line | General handwriting pretraining |
+| Medical Prescription Words | HuggingFace — avi-kai | Domain vocabulary |
+| Doctor Prescription BD | Kaggle — mamun1113 | Prescription fine-tuning |
+| OCR Processed Prescriptions | Kaggle — nadaarfaoui | Additional training data |
 
-### WER
-Word Error Rate
-
-### Exact Match Accuracy
-
-### Prescription Accuracy Rate
-
-Measures correct recognition of:
-
-- drug name
-- dosage
-- frequency
+Split: **70% train / 15% val / 15% test**
 
 ---
 
-# 12. Training Environment
+# 9. Android Application
 
-The project will run training **online using free GPU environments** because the development machine is a **MacBook Air**.
+A fully offline Android app (`android/`) built in Kotlin.
 
-Local machine is used for:
+### Features
+- Pick an image from the **gallery**
+- Capture a photo with the **camera**
+- On-device inference using **PyTorch Mobile** (no server, no internet)
+- Displays recognised text and confidence
 
-- coding
-- preprocessing
-- debugging
+### On-Device Inference
 
-Training runs on:
+The trained model is exported to TorchScript Lite Interpreter format (`.ptl`) and bundled inside the APK.
 
-### Kaggle Notebooks (Recommended)
-
-Typical resources:
-
-| Resource | Value |
-|--------|------|
-GPU | NVIDIA T4 |
-RAM | ~16GB |
-Session | ~9 hours |
-
-Kaggle allows training even if the laptop is closed.
-
----
-
-# 13. Training Workflow
-
-Recommended workflow:
-
-1. Write training code locally
-2. Upload datasets to Kaggle
-3. Train model on GPU
-4. Save checkpoints
-5. Resume training if session ends
-
----
-
-# 14. Checkpoint Strategy
-
-Training scripts must include checkpoint saving.
-
-Example:
-
-```python
-torch.save(model.state_dict(), "checkpoint.pt")
+**Export command (run once after training):**
+```bash
+python3 export_mobile_model.py
+# Then copy:
+cp models/model.ptl android/app/src/main/assets/model.ptl
 ```
 
-This allows training to resume after interruptions.
+### Android Preprocessing (mirrors Python pipeline)
+
+Since OpenCV is not available on Android, the preprocessing is reimplemented in Kotlin:
+1. Extract per-pixel luminance from the Bitmap
+2. Otsu's threshold to binarise (matches `adaptive_threshold` in training)
+3. Scale to 64 px height, pad width to 256 px with white
+4. Normalise to `[0, 1]`
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `MainActivity.kt` | All UI logic, preprocessing, inference, CTC decode |
+| `activity_main.xml` | Layout: image preview, buttons, result card |
+| `AndroidManifest.xml` | Permissions: camera, storage |
+| `app/build.gradle` | Dependencies: PyTorch Mobile, Coil |
+| `res/xml/file_paths.xml` | FileProvider paths for camera output |
+
+### Dependencies
+
+| Library | Version | Purpose |
+|---------|---------|---------|
+| `pytorch_android_lite` | 2.1.0 | On-device model inference |
+| `coil` | 2.5.0 | Image loading / preview |
+| Material Components | 1.11.0 | UI styling |
 
 ---
 
-# 15. Implementation Timeline
+# 10. REST API (Optional — for laptop-based testing)
 
-## Week 1
-Dataset collection and cleaning
+A Flask server (`api/server.py`) wraps the same inference pipeline for testing from a browser or other devices on the same network.
 
-## Week 2
-Preprocessing pipeline
+```bash
+python3 api/server.py --port 5001
+```
 
-## Week 3
-Baseline model testing
+**Endpoints:**
 
-## Week 4
-Model training
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Check if server and model are ready |
+| POST | `/predict` | Send image (multipart), receive JSON result |
 
-## Week 5
-Post processing development
-
-## Week 6
-Evaluation and report writing
+**Response format:**
+```json
+{
+  "raw_text":       "amoxicillin 500 mg",
+  "corrected_text": "Amoxicillin 500 mg",
+  "confidence":     0.74,
+  "needs_review":   false,
+  "dosage":         ["500 mg"],
+  "frequency":      [],
+  "duration":       []
+}
+```
 
 ---
 
-# 16. Ethical Considerations
+# 11. Project Structure
 
-Important limitations:
+```
+Projecat/
+├── config.py                     Central configuration (paths, hyperparameters)
+├── export_mobile_model.py        Export CRNN → model.ptl for Android
+├── demo.py                       CLI demo (image or webcam)
+│
+├── model/
+│   ├── crnn.py                   CRNN architecture
+│   └── utils.py                  Label encode/decode, CER, WER
+│
+├── preprocessing/
+│   └── transforms.py             Full image preprocessing pipeline
+│
+├── postprocessing/
+│   ├── lexicon.py                Fuzzy medical dictionary correction
+│   ├── rules.py                  Dosage/frequency/duration extraction
+│   └── confidence.py             Confidence scoring
+│
+├── data/
+│   ├── download_all.py           Download all datasets
+│   └── split_data.py             Train/val/test split
+│
+├── baselines/
+│   └── run_hf_baseline.py        HuggingFace TrOCR baseline comparison
+│
+├── api/
+│   ├── server.py                 Flask REST API
+│   └── requirements.txt          API dependencies
+│
+├── android/                      Android app (Kotlin)
+│   ├── app/src/main/
+│   │   ├── java/com/ocr/prescriptionocr/MainActivity.kt
+│   │   ├── res/layout/activity_main.xml
+│   │   ├── res/values/strings.xml
+│   │   ├── res/values/themes.xml
+│   │   ├── res/xml/file_paths.xml
+│   │   └── assets/model.ptl      (copy here after export)
+│   ├── app/build.gradle
+│   └── settings.gradle
+│
+├── models/
+│   ├── checkpoints/best_model.pt  Trained checkpoint
+│   └── model.ptl                  Mobile-exported model
+│
+└── notebooks/
+    └── train_colab.py             Colab training script
+```
+
+---
+
+# 12. Evaluation Metrics
+
+| Metric | Description |
+|--------|-------------|
+| CER | Character Error Rate = edit\_distance(pred, target) / len(target) |
+| WER | Word Error Rate = edit\_distance(pred\_words, target\_words) / len(target\_words) |
+
+**Achieved:** CER **0.2840** on test set.
+
+---
+
+# 13. Ethical Considerations
 
 - System is **not clinically validated**
-- Predictions may contain errors
-- Human verification is required
-
-Medical data must also be:
-
-- anonymized
-- privacy compliant
+- Predictions may contain errors — always require human verification
+- Medical datasets must be anonymised and privacy-compliant
+- Not suitable for real prescription dispensing
 
 ---
 
-# 17. Project Resources
+# 14. Future Improvements
 
-## Datasets
-
-IAM Line Dataset  
-https://huggingface.co/datasets/Teklia/IAM-line
-
-IAM Words Dataset  
-https://huggingface.co/datasets/priyank-m/IAM_words_text_recognition
-
-Medical Prescription Handwritten Words  
-https://huggingface.co/datasets/avi-kai/Medical_Prescription_Handwritten_Words
-
-Doctor Handwritten Prescription BD Dataset  
-https://www.kaggle.com/datasets/mamun1113/doctors-handwritten-prescription-bd-dataset
-
-OCR Processed Prescriptions  
-https://www.kaggle.com/datasets/nadaarfaoui/ocr-processed-handwritten-prescriptions
-
-Illegible Prescription Dataset  
-https://www.kaggle.com/datasets/mehaksingal/illegible-medical-prescription-images-dataset
-
----
-
-# 18. Future Improvements
-
-Potential extensions:
-
-- full prescription parsing
-- structured extraction
-- multilingual support
-- improved segmentation using object detection
-- domain specific language models
-
----
-
-# 19. Conclusion
-
-This project proposes a machine learning system for recognizing handwritten medical prescriptions.
-
-By combining:
-
-- handwriting datasets
-- domain-specific prescription data
-- deep learning OCR models
-- medical post processing
-
-the system aims to improve recognition of doctor handwriting.
-
-The project will run using **free GPU resources** and follow a structured training strategy for best results.
-
+- Fine-tune on more prescription-specific data to reduce CER below 15%
+- Replace CRNN with TrOCR (transformer-based) for higher accuracy
+- Add full prescription parsing (drug name, patient info, doctor signature)
+- Multilingual support
+- On-device post-processing (medical dictionary bundled in APK)

@@ -5,9 +5,6 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -221,41 +218,83 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Prepares a Bitmap for the CRNN model:
+     * Prepares a Bitmap for the CRNN model — mirrors the Python preprocessing pipeline:
      *  1. Convert to grayscale
-     *  2. Scale to IMG_H height, preserving aspect ratio
-     *  3. Pad width to IMG_W with white (255)
-     *  4. Normalise pixel values to [0, 1]
+     *  2. Binarise with Otsu's threshold (matches adaptive_threshold in transforms.py)
+     *  3. Scale to IMG_H height, preserving aspect ratio
+     *  4. Pad width to IMG_W with white (255)
+     *  5. Normalise pixel values to [0, 1]
      *
      * Returns a flat float array of length IMG_H * IMG_W.
      */
     private fun preprocessBitmap(src: Bitmap): FloatArray {
-        // Step 1 — Grayscale
-        val grayBmp = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
-        val canvas = android.graphics.Canvas(grayBmp)
-        val paint = Paint()
-        val cm = ColorMatrix().apply { setSaturation(0f) }
-        paint.colorFilter = ColorMatrixColorFilter(cm)
-        canvas.drawBitmap(src, 0f, 0f, paint)
+        // Step 1 — Grayscale: read luma value for every pixel
+        val w = src.width
+        val h = src.height
+        val srcPixels = IntArray(w * h)
+        src.getPixels(srcPixels, 0, w, 0, 0, w, h)
 
-        // Step 2 — Scale to IMG_H, cap width at IMG_W
-        val scale = IMG_H.toFloat() / grayBmp.height
-        val scaledW = minOf((grayBmp.width * scale).toInt(), IMG_W)
-        val scaled = Bitmap.createScaledBitmap(grayBmp, scaledW, IMG_H, true)
+        val gray = IntArray(w * h) { i ->
+            val p = srcPixels[i]
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8)  and 0xFF
+            val b =  p         and 0xFF
+            // Standard luminance weights
+            (0.299 * r + 0.587 * g + 0.114 * b).toInt()
+        }
 
-        // Step 3 — Pad to IMG_W × IMG_H (white background)
-        val padded = Bitmap.createBitmap(IMG_W, IMG_H, Bitmap.Config.ARGB_8888)
+        // Step 2 — Otsu's threshold: compute histogram, find best split point
+        val histogram = IntArray(256)
+        for (v in gray) histogram[v]++
+
+        val total = w * h
+        var sumAll = 0L
+        for (i in 0..255) sumAll += i * histogram[i]
+
+        var sumB = 0L
+        var wB = 0
+        var threshold = 128   // fallback
+        var maxVariance = 0.0
+
+        for (t in 0..255) {
+            wB += histogram[t]
+            if (wB == 0) continue
+            val wF = total - wB
+            if (wF == 0) break
+
+            sumB += t * histogram[t]
+            val meanB = sumB.toDouble() / wB
+            val meanF = (sumAll - sumB).toDouble() / wF
+            val variance = wB.toDouble() * wF * (meanB - meanF) * (meanB - meanF)
+            if (variance > maxVariance) { maxVariance = variance; threshold = t }
+        }
+
+        // Apply threshold: dark pixels (text) → 0, light pixels (background) → 255
+        val binary = IntArray(w * h) { i -> if (gray[i] < threshold) 0 else 255 }
+
+        // Step 3 — Build a greyscale Bitmap from the binary array, scale to IMG_H
+        val binaryBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val binaryArgb = IntArray(w * h) { i ->
+            val v = binary[i]; (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+        }
+        binaryBmp.setPixels(binaryArgb, 0, w, 0, 0, w, h)
+
+        val scale  = IMG_H.toFloat() / h
+        val scaledW = minOf((w * scale).toInt(), IMG_W)
+        val scaled  = Bitmap.createScaledBitmap(binaryBmp, scaledW, IMG_H, true)
+
+        // Step 4 — Pad to IMG_W × IMG_H with white
+        val padded    = Bitmap.createBitmap(IMG_W, IMG_H, Bitmap.Config.ARGB_8888)
         val padCanvas = android.graphics.Canvas(padded)
         padCanvas.drawColor(Color.WHITE)
         padCanvas.drawBitmap(scaled, 0f, 0f, null)
 
-        // Step 4 — Normalise to [0, 1] and flatten to float[]
-        val pixels = IntArray(IMG_W * IMG_H)
-        padded.getPixels(pixels, 0, IMG_W, 0, 0, IMG_W, IMG_H)
+        // Step 5 — Normalise to [0, 1]
+        val finalPixels = IntArray(IMG_W * IMG_H)
+        padded.getPixels(finalPixels, 0, IMG_W, 0, 0, IMG_W, IMG_H)
 
         return FloatArray(IMG_W * IMG_H) { i ->
-            // Extract the red channel (= grey value in a greyscale image) and normalise
-            ((pixels[i] shr 16) and 0xFF) / 255.0f
+            ((finalPixels[i] shr 16) and 0xFF) / 255.0f
         }
     }
 
