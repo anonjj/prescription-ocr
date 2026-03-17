@@ -8,7 +8,7 @@ import re
 # Dosage patterns: "500 mg", "250mg", "0.5 g"
 # ──────────────────────────────────────────────
 DOSAGE_PATTERN = re.compile(
-    r'(\d+\.?\d*)\s*(mg|ml|mcg|g|iu|units?|drops?|puffs?|tabs?|caps?)',
+    r'(\d+\.?\d*)\s*(mg|ml|mcg|g|iu|units?|drops?|puffs?|tabs?|caps?|syp|inj|susp)',
     re.IGNORECASE
 )
 
@@ -19,12 +19,16 @@ FREQUENCY_PATTERNS = [
     (re.compile(r'(\d)-(\d)-(\d)', re.IGNORECASE), "schedule"),
     (re.compile(r'(once|twice|thrice|three times|four times)\s*(daily|a day|per day)',
                 re.IGNORECASE), "frequency"),
-    (re.compile(r'\b(OD|BD|TDS|QDS|QID|PRN|SOS|BID|TID)\b',
+    (re.compile(r'\b(OD|BD|TDS|QDS|QID|PRN|SOS|BID|TID|HS|AC|PC|STAT|OW|OM|ON)\b',
                 re.IGNORECASE), "abbreviation"),
     (re.compile(r'(before|after|with)\s*(meals?|food|breakfast|lunch|dinner)',
                 re.IGNORECASE), "timing"),
     (re.compile(r'(at|every)\s*(bedtime|night|morning|evening)',
                 re.IGNORECASE), "timing"),
+    (re.compile(r'\b(if\s+needed|when\s+required|as\s+required|as\s+needed)\b',
+                re.IGNORECASE), "prn"),
+    (re.compile(r'\b(immediately|right\s+away|right\s+now)\b',
+                re.IGNORECASE), "stat"),
 ]
 
 # ──────────────────────────────────────────────

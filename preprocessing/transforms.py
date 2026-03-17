@@ -79,7 +79,26 @@ def resize_pad(img: np.ndarray, target_h: int = IMG_HEIGHT,
     return padded
 
 
-def preprocess_image(img_path: str, full_pipeline: bool = True) -> np.ndarray:
+def get_augmentation_pipeline():
+    """Return an albumentations augmentation pipeline for training."""
+    try:
+        import albumentations as A
+    except ImportError:
+        raise ImportError("albumentations not installed. Run: pip install albumentations")
+
+    return A.Compose([
+        A.ShiftScaleRotate(
+            shift_limit=0.0, scale_limit=0.15, rotate_limit=10,
+            border_mode=cv2.BORDER_REPLICATE, p=0.6
+        ),
+        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+        A.GaussNoise(var_limit=(5.0, 30.0), p=0.4),
+        A.ElasticTransform(alpha=20, sigma=4, p=0.3),
+    ])
+
+
+def preprocess_image(img_path: str, full_pipeline: bool = True,
+                     augment: bool = False) -> np.ndarray:
     """
     Full preprocessing pipeline for a handwriting image.
 
@@ -102,6 +121,10 @@ def preprocess_image(img_path: str, full_pipeline: bool = True) -> np.ndarray:
         img = enhance_contrast(img)
         img = adaptive_threshold(img)
         img = deskew(img)
+
+    if augment:
+        pipeline = get_augmentation_pipeline()
+        img = pipeline(image=img)["image"]
 
     img = resize_pad(img)
     return img

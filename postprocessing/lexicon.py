@@ -38,22 +38,47 @@ DRUG_NAMES = [
     "tamsulosin", "telmisartan", "tramadol", "triamcinolone",
     "valproate", "valsartan", "vancomycin", "verapamil",
     "warfarin",
+    # Indian brand names
+    "telzy", "telzy am", "stamobil", "stamobil rd", "aciloc", "eludane",
+    "pantop", "pantop d", "pan d", "pan 40", "dolo", "dolo 650",
+    "calpol", "rantac", "omez", "omez d", "combiflam", "taxim",
+    "taxim o", "augmentin", "wikoryl", "cheston", "sinarest",
+    "allegra", "montair", "montair lc", "glycomet", "januvia",
+    "galvus", "ecosprin", "storvas", "rosuvas", "tonact",
+    "shelcal", "calcirol", "zincovit", "neurobion", "becosules",
+    "cremaffin", "duphalac", "liv 52", "limcee", "revital",
+    "volini", "moov", "iodex", "betadine", "soframycin",
+    "candid", "candid b", "fourderm", "terbicip", "lamisil",
+    "meftal", "meftal spas", "cyclopam", "buscopan", "drotin",
+    "stemetil", "perinorm", "emeset", "vomistop",
+    "crocin", "fepanil", "metacin", "dolopar",
+    "norflox tz", "ciplox tz", "o2", "oflomac",
+    "telma", "telma am", "telma h", "telmikind",
+    "amlokind", "amlopress", "amlong", "stamlo",
+    "atorva", "lipitor", "rozavel", "crestor",
 ]
+
+# Lowercase all entries for consistent fuzzy matching
+DRUG_NAMES = [n.lower() for n in DRUG_NAMES]
 
 # ──────────────────────────────────────────────
 # Dosage Units
 # ──────────────────────────────────────────────
-UNITS = ["mg", "ml", "mcg", "g", "iu", "units", "drops", "puffs", "tabs", "cap"]
+UNITS = ["mg", "ml", "mcg", "g", "iu", "units", "drops", "puffs", "tabs", "cap",
+         "syp", "inj", "susp", "oint", "cr", "gel", "lotion", "sachet"]
 
 # ──────────────────────────────────────────────
 # Frequency Abbreviations
 # ──────────────────────────────────────────────
 FREQUENCIES = [
     "OD", "BD", "TDS", "QDS", "QID", "SOS", "PRN",
+    "HS", "AC", "PC", "STAT", "OW", "OM", "ON",
     "once daily", "twice daily", "three times daily",
-    "four times daily", "as needed", "before meals",
-    "after meals", "at bedtime", "morning", "evening", "night",
+    "four times daily", "as needed", "when required",
+    "before meals", "after meals", "at bedtime",
+    "morning", "evening", "night", "immediately",
     "1-0-1", "1-1-1", "1-0-0", "0-0-1", "0-1-0",
+    "1-1-0", "0-1-1",
 ]
 
 
@@ -93,11 +118,44 @@ def fuzzy_correct(text: str, threshold: int = 80) -> tuple:
 def correct_prescription_text(words: list, threshold: int = 80) -> list:
     """
     Correct a list of OCR-output words using fuzzy matching.
+    Also tries bigrams to catch two-word brand names (e.g. "Telzy AM", "Pan D").
 
     Returns list of dicts with original, corrected, score, and matched_term.
     """
     results = []
-    for word in words:
+    skip_next = False
+
+    for i, word in enumerate(words):
+        if skip_next:
+            skip_next = False
+            continue
+
+        # Try bigram first if a next word exists
+        if i + 1 < len(words):
+            bigram = word + " " + words[i + 1]
+            bigram_lower = bigram.lower().strip()
+            if bigram_lower in DRUG_NAMES:
+                results.append({
+                    "original": bigram,
+                    "corrected": bigram_lower,
+                    "score": 100,
+                    "matched_term": bigram_lower,
+                    "was_corrected": True,
+                })
+                skip_next = True
+                continue
+            match = process.extractOne(bigram_lower, DRUG_NAMES, scorer=fuzz.ratio)
+            if match and match[1] >= threshold + 5:  # stricter threshold for bigrams
+                results.append({
+                    "original": bigram,
+                    "corrected": match[0],
+                    "score": match[1],
+                    "matched_term": match[0],
+                    "was_corrected": True,
+                })
+                skip_next = True
+                continue
+
         corrected, score, matched = fuzzy_correct(word, threshold)
         results.append({
             "original": word,

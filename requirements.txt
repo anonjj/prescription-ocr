@@ -12,3 +12,5 @@ editdistance>=0.6.0
 fuzzywuzzy>=0.18.0
 python-Levenshtein>=0.21.0
 tqdm>=4.65.0
+craft-text-detector>=0.4.2   # Option 3: text region detection before CRNN
+albumentations>=1.4.0         # Option 1: training augmentation pipeline

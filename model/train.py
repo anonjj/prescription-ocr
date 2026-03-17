@@ -86,7 +86,7 @@ def validate(model, val_loader, ctc_loss, device, use_amp=False):
 
 
 def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
-          resume_from=None, cache_tensors=False):
+          resume_from=None, cache_tensors=False, augment=True):
     """Main training function."""
     device = get_device()
     print(f"\n  Device: {device}")
@@ -106,11 +106,13 @@ def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
         print("  Run the data pipeline first.")
         return
 
-    train_dataset = HandwritingDataset(train_csv, full_pipeline=True, cache_tensors=cache_tensors)
+    train_dataset = HandwritingDataset(train_csv, full_pipeline=True,
+                                       cache_tensors=cache_tensors, augment=augment)
     val_dataset = HandwritingDataset(val_csv, full_pipeline=True, cache_tensors=cache_tensors)
 
     print(f"  Train samples: {len(train_dataset)}")
     print(f"  Val samples:   {len(val_dataset)}")
+    print(f"  Augmentation:  {'enabled' if augment else 'disabled'}")
     if cache_tensors:
         cache_mb = (len(train_dataset) + len(val_dataset)) * 64 / 1024
         print(f"  Tensor caching: enabled (~{cache_mb:.1f} MB)")
@@ -241,7 +243,9 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=LEARNING_RATE)
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
     parser.add_argument("--cache", action="store_true", help="Cache tensors in RAM (faster after epoch 1)")
+    parser.add_argument("--no-augment", action="store_true", help="Disable training augmentation")
     args = parser.parse_args()
 
     train(epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
-          resume_from=args.resume, cache_tensors=args.cache)
+          resume_from=args.resume, cache_tensors=args.cache,
+          augment=not args.no_augment)

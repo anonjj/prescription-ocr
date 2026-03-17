@@ -22,10 +22,12 @@ class HandwritingDataset(Dataset):
     """
 
     def __init__(self, csv_path: str, full_pipeline: bool = True, max_label_len: int = 50,
-                 cache_tensors: bool = False):
+                 cache_tensors: bool = False, augment: bool = False):
         self.full_pipeline = full_pipeline
         self.max_label_len = max_label_len
-        self.cache_tensors = cache_tensors
+        self.augment = augment
+        # Augmentation randomises each access — caching the first result would freeze it
+        self.cache_tensors = cache_tensors and not augment
         self.samples = []
         self._cache = {}  # idx -> img_tensor (populated on first access)
 
@@ -58,7 +60,9 @@ class HandwritingDataset(Dataset):
         else:
             # Load and preprocess image
             try:
-                img = preprocess_image(sample["image_path"], full_pipeline=self.full_pipeline)
+                img = preprocess_image(sample["image_path"],
+                                       full_pipeline=self.full_pipeline,
+                                       augment=self.augment)
             except Exception:
                 # Return a blank image if preprocessing fails
                 import numpy as np
