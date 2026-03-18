@@ -8,7 +8,6 @@ import string
 # Paths
 # ──────────────────────────────────────────────
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-# Data dir moved to /tmp to bypass strict macOS folder permissions on the main dir
 DATA_DIR = "/tmp/ocr_data"
 RAW_DIR = os.path.join(DATA_DIR, "raw")
 PROCESSED_DIR = os.path.join(DATA_DIR, "processed")
@@ -41,11 +40,11 @@ IDX_TO_CHAR = {i + 1: ch for i, ch in enumerate(CHARS)}
 # ──────────────────────────────────────────────
 # Training hyperparameters
 # ──────────────────────────────────────────────
-BATCH_SIZE = 320  # Optimized for T4 GPU (was 32)
+BATCH_SIZE = 320
 LEARNING_RATE = 1e-3
-NUM_EPOCHS = 100  # Extended for longer training
-PATIENCE = 15  # early stopping
-LR_STEP_SIZE = 25  # Decay LR every 25 epochs (was 15)
+NUM_EPOCHS = 100
+PATIENCE = 15
+LR_STEP_SIZE = 25
 LR_GAMMA = 0.1
 NUM_WORKERS = 4
 
@@ -81,4 +80,3 @@ HUGGINGFACE_DATASETS = {
 # ──────────────────────────────────────────────
 TRAIN_RATIO = 0.70
 VAL_RATIO = 0.15
-TEST_RATIO = 0.15
