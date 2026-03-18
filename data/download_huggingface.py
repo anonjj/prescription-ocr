@@ -78,7 +78,7 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
 
     except Exception as e:
         print(f"              ✗ Error: {e}")
-        raise
+        # Not raising the exception to allow other datasets to download.
 
 
 def download_all_huggingface(dry_run: bool = False):
