@@ -6,7 +6,7 @@ import sys
 import argparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import RAW_DIR, HUGGINGFACE_DATASETS
+from config import RAW_DIR, HUGGINGFACE_DATASETS  # type: ignore
 
 
 def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bool = False):
@@ -24,7 +24,7 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
     os.makedirs(images_dir, exist_ok=True)
 
     try:
-        from datasets import load_dataset
+        from datasets import load_dataset  # type: ignore
         import csv
 
         ds = load_dataset(identifier, trust_remote_code=True)
@@ -41,7 +41,7 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
                 print(f"              Extracting split: {split_name} ({len(split)} samples)")
                 
                 # Import tqdm for progress tracking
-                from tqdm import tqdm
+                from tqdm import tqdm  # type: ignore
                 
                 for idx, sample in enumerate(tqdm(split, desc=f"              {split_name}")):
                     # Try common column names for image
@@ -66,9 +66,9 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
                     img_path = os.path.join(images_dir, img_filename)
 
                     if hasattr(img, "save"):
-                        img.save(img_path)
+                        img.save(img_path)  # type: ignore
                     else:
-                        from PIL import Image
+                        from PIL import Image  # type: ignore
                         Image.fromarray(img).save(img_path)
 
                     writer.writerow([os.path.join("images", img_filename), str(label), split_name])
