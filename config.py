@@ -72,10 +72,8 @@ KAGGLE_DATASETS = {
 }
 
 HUGGINGFACE_DATASETS = {
-    "iam_line":          "Teklia/IAM-line",
-    "iam_word":          "dnt/IAM_Words",          # ~115k word images, much larger than line set
-    "bentham_word":      "Teklia/Bentham-word",       # historical cursive, adds writing style diversity
-    "medical_words":     "avi-kai/Medical_Prescription_Handwritten_Words",
+    "iam_line":       "Teklia/IAM-line",
+    "ocr_handwriting": "soyeb-jim285/ocr-handwriting-data",
 }
 
 # ──────────────────────────────────────────────
