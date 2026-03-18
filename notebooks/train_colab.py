@@ -154,18 +154,23 @@ scaler = GradScaler()
 use_amp = device.type == 'cuda'
 
 # Resume from checkpoint if available
+# Prefer latest.pt (most recent epoch) over best_model.pt
 start_epoch = 0
 best_cer = float('inf')
-resume_path = os.path.join(DRIVE_CKPT_DIR, 'best_model.pt')
-if os.path.exists(resume_path):
-    ckpt = torch.load(resume_path, map_location=device)
-    model.load_state_dict(ckpt['model_state_dict'])
-    optimizer.load_state_dict(ckpt['optimizer_state_dict'])
-    start_epoch = ckpt.get('epoch', 0) + 1
-    best_cer = ckpt.get('best_cer', float('inf'))
-    print(f'Resumed from epoch {start_epoch}, best CER: {best_cer:.4f}')
-
 patience_counter = 0
+
+for resume_name in ['latest.pt', 'best_model.pt']:
+    resume_path = os.path.join(DRIVE_CKPT_DIR, resume_name)
+    if os.path.exists(resume_path):
+        ckpt = torch.load(resume_path, map_location=device)
+        model.load_state_dict(ckpt['model_state_dict'])
+        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        scheduler.load_state_dict(ckpt['scheduler_state_dict'])
+        start_epoch = ckpt.get('epoch', 0) + 1
+        best_cer = ckpt.get('best_cer', float('inf'))
+        patience_counter = ckpt.get('patience_counter', 0)
+        print(f'Resumed from {resume_name} — epoch {start_epoch}, best CER: {best_cer:.4f}, patience: {patience_counter}')
+        break
 
 print(f'\\n{"="*70}')
 print(f'  {"Epoch":>5} | {"Train Loss":>11} | {"Val Loss":>9} | {"CER":>7} | {"WER":>7} | {"Time":>6}')
@@ -252,7 +257,9 @@ for epoch in range(start_epoch, NUM_EPOCHS):
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
                 'best_cer': best_cer,
+                'patience_counter': patience_counter,
             }, os.path.join(ckpt_dir, 'best_model.pt'))
         print(f'         -> Best model saved (CER: {best_cer:.4f})')
     else:
@@ -261,13 +268,25 @@ for epoch in range(start_epoch, NUM_EPOCHS):
             print(f'\\nEarly stopping at epoch {epoch+1}')
             break
 
-    # Save periodic checkpoint to Drive
-    if (epoch + 1) % 5 == 0:
+    # Always save latest.pt to Drive — guarantees at most 1 epoch lost on disconnect
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
+        'best_cer': best_cer,
+        'patience_counter': patience_counter,
+    }, os.path.join(DRIVE_CKPT_DIR, 'latest.pt'))
+
+    # Save periodic checkpoint to Drive every 10 epochs as milestone snapshots
+    if (epoch + 1) % 10 == 0:
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
             'best_cer': best_cer,
+            'patience_counter': patience_counter,
         }, os.path.join(DRIVE_CKPT_DIR, f'epoch_{epoch+1}.pt'))
 
 print(f'\\nTraining complete! Best CER: {best_cer:.4f}')

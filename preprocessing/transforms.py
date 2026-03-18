@@ -87,12 +87,12 @@ def get_augmentation_pipeline():
         raise ImportError("albumentations not installed. Run: pip install albumentations")
 
     return A.Compose([
-        A.ShiftScaleRotate(
-            shift_limit=0.0, scale_limit=0.15, rotate_limit=10,
-            border_mode=cv2.BORDER_REPLICATE, p=0.6
+        A.Affine(
+            scale=(0.85, 1.15), rotate=(-10, 10),
+            mode=cv2.BORDER_REPLICATE, p=0.6
         ),
         A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-        A.GaussNoise(var_limit=(5.0, 30.0), p=0.4),
+        A.GaussNoise(std_range=(0.02, 0.11), p=0.4),
         A.ElasticTransform(alpha=20, sigma=4, p=0.3),
     ])
 
