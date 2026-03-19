@@ -7,25 +7,25 @@ Usage: python3 run_line_ocr.py <image_path>
 """
 import os
 import sys
-import cv2
-import numpy as np
-import torch
+import cv2  # type: ignore
+import numpy as np  # type: ignore
+import torch  # type: ignore
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import IMG_HEIGHT, IMG_WIDTH, IDX_TO_CHAR, BLANK_LABEL
-from postprocessing.confidence import compute_confidence, needs_review
-from postprocessing.lexicon import correct_prescription_text
+from config import IMG_HEIGHT, IMG_WIDTH, IDX_TO_CHAR, BLANK_LABEL  # type: ignore
+from postprocessing.confidence import compute_confidence, needs_review  # type: ignore
+from postprocessing.lexicon import correct_prescription_text  # type: ignore
 
 # CRAFT detector — optional dependency
 try:
     # craft-text-detector references torchvision.models.vgg.model_urls which was
     # removed in torchvision >=0.13. Patch it back before importing.
-    import torchvision.models.vgg as _vgg
+    import torchvision.models.vgg as _vgg  # type: ignore
     if not hasattr(_vgg, "model_urls"):
         _vgg.model_urls = {
             "vgg16_bn": "https://download.pytorch.org/models/vgg16_bn-6c64b313.pth",
         }
-    from craft_text_detector import Craft
+    from craft_text_detector import Craft  # type: ignore
     CRAFT_AVAILABLE = True
 except ImportError:
     CRAFT_AVAILABLE = False
@@ -67,9 +67,10 @@ def preprocess_crop(crop_bgr):
     gray = cv2.medianBlur(gray, 3)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     gray = clahe.apply(gray)
-    gray = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-    )
+    # REMOVED: adaptive threshold was destroying text on camera images
+    # gray = cv2.adaptiveThreshold(
+    #     gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+    # )
     h, w = gray.shape
     ratio = IMG_HEIGHT / h
     new_w = min(int(w * ratio), IMG_WIDTH)

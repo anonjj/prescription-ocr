@@ -186,9 +186,16 @@ train_dataset = HandwritingDataset(
 )
 val_dataset = HandwritingDataset(
     os.path.join(PROCESSED_DIR, 'val.csv'),
-    full_pipeline=False,
+    full_pipeline=True,
     cache_tensors=False
 )
+# Oversample prescription data
+original_len = len(train_dataset.samples)
+rx_samples = [s for s in train_dataset.samples 
+              if 'prescription' in s['image_path'].lower() or 'bd-dataset' in s['image_path'].lower()]
+train_dataset.samples.extend(rx_samples)
+print(f'Oversampled: {original_len} → {len(train_dataset.samples)} (+{len(rx_samples)} prescription dupes)')
+
 print(f'Train: {len(train_dataset):,}, Val: {len(val_dataset):,}')
 
 train_loader = DataLoader(train_dataset, batch_size=EFFECTIVE_BATCH, shuffle=True,

@@ -124,7 +124,8 @@ def preprocess_image(img_path: str, full_pipeline: bool = True,
     img = enhance_contrast(img)
 
     if full_pipeline:
-        img = binarize(img, method="otsu")
+        # Skip binarization — CLAHE-only preserves more info on phone-camera images
+        # img = binarize(img, method="otsu")
         img = deskew(img)
 
     if augment:
