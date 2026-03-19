@@ -126,7 +126,7 @@ import time
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from tqdm.auto import tqdm
 
 sys.path.insert(0, '/kaggle/working/Projecat')
@@ -147,34 +147,35 @@ if device.type == 'cuda':
     print(f'GPU: {torch.cuda.get_device_name(0)}')
     print(f'VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB')
 
-# P100 has 16GB VRAM — can use larger batch than T4
-# BATCH_SIZE from config is 256; override here if needed
-EFFECTIVE_BATCH = BATCH_SIZE  # increase to 320 if VRAM allows on P100
+EFFECTIVE_BATCH = BATCH_SIZE
 
-# Load data
+# cache_tensors=False + num_workers=4: workers start before any cache is built,
+# so no copy-on-write RAM explosion. Images loaded and preprocessed from disk in parallel.
 train_dataset = HandwritingDataset(
     os.path.join(PROCESSED_DIR, 'train.csv'),
     full_pipeline=True,
-    cache_tensors=True
+    cache_tensors=False
 )
 val_dataset = HandwritingDataset(
     os.path.join(PROCESSED_DIR, 'val.csv'),
     full_pipeline=True,
-    cache_tensors=True
+    cache_tensors=False
 )
 print(f'Train: {len(train_dataset):,}, Val: {len(val_dataset):,}')
 
 train_loader = DataLoader(train_dataset, batch_size=EFFECTIVE_BATCH, shuffle=True,
-                          collate_fn=collate_fn, num_workers=2, pin_memory=True)
+                          collate_fn=collate_fn, num_workers=4, pin_memory=True,
+                          persistent_workers=True)
 val_loader   = DataLoader(val_dataset, batch_size=EFFECTIVE_BATCH, shuffle=False,
-                          collate_fn=collate_fn, num_workers=2, pin_memory=True)
+                          collate_fn=collate_fn, num_workers=4, pin_memory=True,
+                          persistent_workers=True)
 
 # Model
 model = CRNN().to(device)
 ctc_loss  = nn.CTCLoss(blank=BLANK_LABEL, zero_infinity=True)
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=LR_STEP_SIZE, gamma=LR_GAMMA)
-scaler    = GradScaler()
+scaler    = GradScaler('cuda') if device.type == 'cuda' else None
 use_amp   = device.type == 'cuda'
 
 # Resume — prefer latest.pt, fall back to best_model.pt
@@ -216,18 +217,23 @@ for epoch in range(start_epoch, NUM_EPOCHS):
 
         optimizer.zero_grad(set_to_none=True)
 
-        with autocast(enabled=use_amp):
+        with autocast('cuda', enabled=use_amp):
             outputs = model(images)
             seq_len = outputs.size(0)
             bs      = images.size(0)
             input_lengths = torch.full((bs,), seq_len, dtype=torch.long, device=device)
             loss = ctc_loss(outputs, labels, input_lengths, label_lengths.to(device))
 
-        scaler.scale(loss).backward()
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
-        scaler.step(optimizer)
-        scaler.update()
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+            optimizer.step()
 
         total_loss += loss.item()
         n_batches  += 1
@@ -248,7 +254,7 @@ for epoch in range(start_epoch, NUM_EPOCHS):
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
 
-            with autocast(enabled=use_amp):
+            with autocast('cuda', enabled=use_amp):
                 outputs = model(images)
                 seq_len = outputs.size(0)
                 bs      = images.size(0)
