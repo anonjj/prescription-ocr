@@ -161,12 +161,12 @@ EFFECTIVE_BATCH = BATCH_SIZE
 # so no copy-on-write RAM explosion. Images loaded and preprocessed from disk in parallel.
 train_dataset = HandwritingDataset(
     os.path.join(PROCESSED_DIR, 'train.csv'),
-    full_pipeline=True,
+    full_pipeline=False,
     cache_tensors=False
 )
 val_dataset = HandwritingDataset(
     os.path.join(PROCESSED_DIR, 'val.csv'),
-    full_pipeline=True,
+    full_pipeline=False,
     cache_tensors=False
 )
 print(f'Train: {len(train_dataset):,}, Val: {len(val_dataset):,}')
