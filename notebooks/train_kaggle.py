@@ -154,8 +154,8 @@ from torch.amp import autocast, GradScaler
 from tqdm.auto import tqdm
 
 REPO_DIR = '/kaggle/working/Projecat'
-assert os.path.exists(REPO_DIR), f"Repo not found at {REPO_DIR} — run Cell 2 first"
-%cd {REPO_DIR}
+assert os.path.exists(REPO_DIR), f"Repo not found at {REPO_DIR}"
+os.chdir(REPO_DIR)
 sys.path.insert(0, REPO_DIR)
 from config import (
     PROCESSED_DIR, BATCH_SIZE, LEARNING_RATE, NUM_EPOCHS, PATIENCE,
@@ -172,7 +172,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'Device: {device}')
 if device.type == 'cuda':
     print(f'GPU: {torch.cuda.get_device_name(0)}')
-    print(f'VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB')
 
 EFFECTIVE_BATCH = BATCH_SIZE
 
@@ -189,14 +188,13 @@ val_dataset = HandwritingDataset(
     full_pipeline=True,
     cache_tensors=False
 )
-# Oversample prescription data
-original_len = len(train_dataset.samples)
-rx_samples = [s for s in train_dataset.samples 
-              if 'prescription' in s['image_path'].lower() or 'bd-dataset' in s['image_path'].lower()]
+# ── FIX 2: Oversample prescription data for ~50/50 balance ──
+rx_samples = [s for s in train_dataset.samples
+              if 'prescription' in s['image_path'].lower()
+              or 'bd-dataset' in s['image_path'].lower()]
 train_dataset.samples.extend(rx_samples)
-print(f'Oversampled: {original_len} → {len(train_dataset.samples)} (+{len(rx_samples)} prescription dupes)')
-
-print(f'Train: {len(train_dataset):,}, Val: {len(val_dataset):,}')
+print(f'Train: {len(train_dataset)} (after oversampling +{len(rx_samples)} prescription dupes)')
+print(f'Val:   {len(val_dataset)}')
 
 train_loader = DataLoader(train_dataset, batch_size=EFFECTIVE_BATCH, shuffle=True,
                           collate_fn=collate_fn, num_workers=4, pin_memory=True)
@@ -230,7 +228,7 @@ for resume_name in ['latest.pt', 'best_model.pt']:
         start_epoch      = ckpt.get('epoch', 0) + 1
         best_cer         = ckpt.get('best_cer', float('inf'))
         patience_counter = ckpt.get('patience_counter', 0)
-        print(f'Resumed from {resume_name} — epoch {start_epoch}, best CER: {best_cer:.4f}, patience: {patience_counter}')
+        print(f'Resumed from {resume_name} — epoch {start_epoch}, best CER: {best_cer:.4f}')
         break
 
 print(f'\\n{"="*70}')
