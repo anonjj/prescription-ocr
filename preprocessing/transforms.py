@@ -1,14 +1,14 @@
 """
 Image preprocessing pipeline for handwriting OCR.
-Grayscale → Denoise → CLAHE → Adaptive threshold → Deskew → Resize+Pad.
+3: Grayscale → Denoise → CLAHE → Binarize (Otsu/Adaptive) → Deskew → Resize+Pad.
 """
-import cv2
-import numpy as np
+import cv2  # type: ignore
+import numpy as np  # type: ignore
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import IMG_HEIGHT, IMG_WIDTH
+from config import IMG_HEIGHT, IMG_WIDTH  # type: ignore
 
 
 def to_grayscale(img: np.ndarray) -> np.ndarray:
@@ -29,12 +29,16 @@ def enhance_contrast(img: np.ndarray) -> np.ndarray:
     return clahe.apply(img)
 
 
-def adaptive_threshold(img: np.ndarray) -> np.ndarray:
-    """Apply adaptive Gaussian thresholding."""
-    return cv2.adaptiveThreshold(
-        img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, 11, 2
-    )
+def binarize(img: np.ndarray, method: str = "otsu") -> np.ndarray:
+    """Binarize image. 'otsu' works better for ink-on-paper, 'adaptive' for uneven lighting."""
+    if method == "otsu":
+        _, result = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return result
+    else:
+        return cv2.adaptiveThreshold(
+            img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 11, 2
+        )
 
 
 def deskew(img: np.ndarray) -> np.ndarray:
@@ -82,7 +86,7 @@ def resize_pad(img: np.ndarray, target_h: int = IMG_HEIGHT,
 def get_augmentation_pipeline():
     """Return an albumentations augmentation pipeline for training."""
     try:
-        import albumentations as A
+        import albumentations as A  # type: ignore
     except ImportError:
         raise ImportError("albumentations not installed. Run: pip install albumentations")
 
@@ -104,8 +108,9 @@ def preprocess_image(img_path: str, full_pipeline: bool = True,
 
     Args:
         img_path: Path to the image file.
-        full_pipeline: If True, apply all preprocessing steps.
-                       If False, only grayscale + resize (for speed).
+        full_pipeline: If True,  apply denoise + CLAHE + binarize + deskew.
+                       If False, apply denoise + CLAHE only (no binarization).
+                       Empirically CLAHE-only preserves more stroke detail than thresholding.
 
     Returns:
         Preprocessed image as numpy array (H x W, uint8).
@@ -115,11 +120,11 @@ def preprocess_image(img_path: str, full_pipeline: bool = True,
         raise FileNotFoundError(f"Cannot read image: {img_path}")
 
     img = to_grayscale(img)
+    img = denoise(img)
+    img = enhance_contrast(img)
 
     if full_pipeline:
-        img = denoise(img)
-        img = enhance_contrast(img)
-        img = adaptive_threshold(img)
+        img = binarize(img, method="otsu")
         img = deskew(img)
 
     if augment:

@@ -101,6 +101,25 @@ else:
 """
 
 # ============================================================
+# CELL 4b: Data Distribution Check
+# ============================================================
+"""
+import pandas as pd, os, sys
+sys.path.insert(0, '/kaggle/working/Projecat')
+from config import PROCESSED_DIR
+
+for split in ['train', 'val', 'test']:
+    path = os.path.join(PROCESSED_DIR, f'{split}.csv')
+    if os.path.exists(path):
+        df = pd.read_csv(path)
+        print(f'{split}: {len(df):,} total')
+        print(df['source_dataset'].value_counts().to_string())
+        print()
+    else:
+        print(f'{split}: NOT FOUND — run Cell 4 first')
+"""
+
+# ============================================================
 # CELL 5: Sanity Check
 # ============================================================
 """
@@ -161,8 +180,9 @@ EFFECTIVE_BATCH = BATCH_SIZE
 # so no copy-on-write RAM explosion. Images loaded and preprocessed from disk in parallel.
 train_dataset = HandwritingDataset(
     os.path.join(PROCESSED_DIR, 'train.csv'),
-    full_pipeline=False,
-    cache_tensors=False
+    full_pipeline=True,
+    cache_tensors=False,
+    augment=True
 )
 val_dataset = HandwritingDataset(
     os.path.join(PROCESSED_DIR, 'val.csv'),
@@ -172,11 +192,9 @@ val_dataset = HandwritingDataset(
 print(f'Train: {len(train_dataset):,}, Val: {len(val_dataset):,}')
 
 train_loader = DataLoader(train_dataset, batch_size=EFFECTIVE_BATCH, shuffle=True,
-                          collate_fn=collate_fn, num_workers=4, pin_memory=True,
-                          persistent_workers=True)
+                          collate_fn=collate_fn, num_workers=4, pin_memory=True)
 val_loader   = DataLoader(val_dataset, batch_size=EFFECTIVE_BATCH, shuffle=False,
-                          collate_fn=collate_fn, num_workers=4, pin_memory=True,
-                          persistent_workers=True)
+                          collate_fn=collate_fn, num_workers=4, pin_memory=True)
 
 # Model
 model = CRNN().to(device)
