@@ -93,7 +93,7 @@ def get_augmentation_pipeline():
     return A.Compose([
         A.Affine(
             scale=(0.85, 1.15), rotate=(-10, 10),
-            cval=255, p=0.6
+            fill=255, p=0.6
         ),
         A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
         A.GaussNoise(std_range=(0.02, 0.11), p=0.4),

@@ -197,9 +197,9 @@ print(f'Train: {len(train_dataset)} (after oversampling +{len(rx_samples)} presc
 print(f'Val:   {len(val_dataset)}')
 
 train_loader = DataLoader(train_dataset, batch_size=EFFECTIVE_BATCH, shuffle=True,
-                          collate_fn=collate_fn, num_workers=4, pin_memory=True)
+                          collate_fn=collate_fn, num_workers=0, pin_memory=True)
 val_loader   = DataLoader(val_dataset, batch_size=EFFECTIVE_BATCH, shuffle=False,
-                          collate_fn=collate_fn, num_workers=4, pin_memory=True)
+                          collate_fn=collate_fn, num_workers=0, pin_memory=True)
 
 # Model
 model = CRNN().to(device)
