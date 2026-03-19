@@ -71,8 +71,7 @@ KAGGLE_DATASETS = {
 }
 
 HUGGINGFACE_DATASETS = {
-    "iam_line":       "Teklia/IAM-line",
-    "ocr_handwriting": "soyeb-jim285/ocr-handwriting-data",
+    "iam_line": "Teklia/IAM-line",
 }
 
 # ──────────────────────────────────────────────

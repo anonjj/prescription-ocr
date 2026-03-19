@@ -104,8 +104,13 @@ else:
 # CELL 5: Sanity Check
 # ============================================================
 """
-import sys, torch
-sys.path.insert(0, '/kaggle/working/Projecat')
+import os, sys, torch
+
+REPO_DIR = '/kaggle/working/Projecat'
+assert os.path.exists(REPO_DIR), f"Repo not found at {REPO_DIR} — run Cell 2 first"
+%cd {REPO_DIR}
+sys.path.insert(0, REPO_DIR)
+
 from model.crnn import CRNN, count_parameters
 
 model = CRNN()
@@ -129,7 +134,10 @@ from torch.utils.data import DataLoader
 from torch.amp import autocast, GradScaler
 from tqdm.auto import tqdm
 
-sys.path.insert(0, '/kaggle/working/Projecat')
+REPO_DIR = '/kaggle/working/Projecat'
+assert os.path.exists(REPO_DIR), f"Repo not found at {REPO_DIR} — run Cell 2 first"
+%cd {REPO_DIR}
+sys.path.insert(0, REPO_DIR)
 from config import (
     PROCESSED_DIR, BATCH_SIZE, LEARNING_RATE, NUM_EPOCHS, PATIENCE,
     LR_STEP_SIZE, LR_GAMMA, BLANK_LABEL
