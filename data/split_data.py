@@ -14,7 +14,7 @@ from config import PROCESSED_DIR, TRAIN_RATIO, VAL_RATIO
 
 def split_data(seed: int = 42):
     """Split manifest.csv into train.csv, val.csv, test.csv."""
-    manifest_path = os.path.join(PROCESSED_DIR, "manifest.csv")
+    manifest_path = os.path.join(PROCESSED_DIR, "manifest_clean.csv")
 
     if not os.path.exists(manifest_path):
         print(f"  Manifest not found: {manifest_path}")
