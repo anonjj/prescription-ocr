@@ -62,15 +62,13 @@ def decode_ctc(log_probs_tensor):
 # ── Image Preprocessing ────────────────────────────────────────────────────────
 
 def preprocess_crop(crop_bgr):
-    """Apply the same pipeline as preprocessing/transforms.py to a BGR crop."""
+    """Apply the same pipeline as preprocessing/transforms.py to a BGR crop.
+    CLAHE-only — no binarization (matches training pipeline)."""
     gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.medianBlur(gray, 3)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     gray = clahe.apply(gray)
-    # REMOVED: adaptive threshold was destroying text on camera images
-    # gray = cv2.adaptiveThreshold(
-    #     gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-    # )
+    # No binarization — CLAHE only (matches training)
     h, w = gray.shape
     ratio = IMG_HEIGHT / h
     new_w = min(int(w * ratio), IMG_WIDTH)
@@ -138,42 +136,62 @@ def detect_lines_craft(image_bgr):
 
 # ── Text Detection — Morphological fallback ────────────────────────────────────
 
-def detect_lines_morphological(image_bgr, min_line_height=20, padding=8):
+def detect_lines_morphological(image_bgr, min_line_height=12, padding=4):
     """
-    Fallback line detector using morphological operations.
+    Line detector using adaptive threshold + horizontal dilation.
+    Tuned for phone-camera prescription images.
     Returns list of (x1, y1, x2, y2).
     """
     img_h, img_w = image_bgr.shape[:2]
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
+    blur = cv2.medianBlur(gray, 5)
     binary = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 8
+        blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV, 25, 12
     )
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 2))
-    dilated = cv2.dilate(binary, kernel, iterations=2)
+
+    # Clean noise
+    kernel_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel_clean)
+
+    # Horizontal dilation only — connects characters, keeps lines separate
+    kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 1))
+    dilated = cv2.dilate(binary, kernel_h, iterations=2)
+
     contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     boxes = []
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
-        if h >= min_line_height and w > img_w * 0.05:
+        if w > img_w * 0.08 and h > min_line_height:
             boxes.append((x, y, x + w, y + h))
 
     boxes.sort(key=lambda b: b[1])
-    merged = []
-    for x1, y1, x2, y2 in boxes:
-        x1 = max(0, x1 - padding)
-        y1 = max(0, y1 - padding)
-        x2 = min(img_w, x2 + padding)
-        y2 = min(img_h, y2 + padding)
-        if merged and y1 < merged[-1][3]:
-            merged[-1] = (min(merged[-1][0], x1), merged[-1][1],
-                          max(merged[-1][2], x2), max(merged[-1][3], y2))
-        else:
-            merged.append([x1, y1, x2, y2])
 
-    return [tuple(b) for b in merged]
+    # Merge only if >50% vertical overlap
+    merged = []
+    for box in boxes:
+        x1, y1, x2, y2 = box
+        if merged:
+            px1, py1, px2, py2 = merged[-1]
+            overlap = min(py2, y2) - max(py1, y1)
+            smaller_h = min(py2 - py1, y2 - y1)
+            if overlap > smaller_h * 0.5:
+                merged[-1] = (min(px1, x1), min(py1, y1), max(px2, x2), max(py2, y2))
+                continue
+        merged.append((x1, y1, x2, y2))
+
+    # Add padding
+    result = []
+    for x1, y1, x2, y2 in merged:
+        result.append((
+            max(0, x1 - padding),
+            max(0, y1 - padding),
+            min(img_w, x2 + padding),
+            min(img_h, y2 + padding)
+        ))
+
+    return result
 
 
 # ── Inference ──────────────────────────────────────────────────────────────────
