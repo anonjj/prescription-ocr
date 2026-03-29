@@ -43,7 +43,7 @@ IDX_TO_CHAR = {i + 1: ch for i, ch in enumerate(CHARS)}
 BATCH_SIZE = 256
 LEARNING_RATE = 1e-3
 NUM_EPOCHS = 100
-PATIENCE = 10
+PATIENCE = 15
 LR_STEP_SIZE = 30
 LR_GAMMA = 0.1
 NUM_WORKERS = 4
@@ -120,4 +120,3 @@ HUGGINGFACE_DATASETS = {
 # ──────────────────────────────────────────────
 TRAIN_RATIO = 0.70
 VAL_RATIO = 0.15
-# take this

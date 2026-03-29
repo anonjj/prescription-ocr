@@ -17,11 +17,81 @@ from postprocessing.lexicon import DRUG_NAMES, UNITS, FREQUENCIES
 
 
 def build_arpa(output_path: str):
-    """
-    Generate a bigram ARPA language model.
+    import pandas as pd
+    import subprocess
+    import shutil
+    
+    # ── 1. Create corpus from lexicon and manifest ──
+    corpus_path = "/tmp/lm_corpus.txt"
+    lines = []
+    
+    # Add from lexicon to ensure vocabulary is preserved
+    for name in DRUG_NAMES:
+        lines.append(name.lower())
+    for u in UNITS:
+        lines.append(u.lower())
+    for f in FREQUENCIES:
+        lines.append(f.lower())
+        
+    # Add actual training labels for real bigram statistics
+    from config import PROCESSED_DIR
+    manifest = os.path.join(PROCESSED_DIR, "manifest_clean.csv")
+    
+    if os.path.exists(manifest):
+        df = pd.read_csv(manifest)
+        for text in df["text_label"].dropna():
+            if isinstance(text, str):
+                lines.append(text.strip().lower())
+        print(f"Added {len(df)} lines from manifest_clean.csv for LM training.")
+    else:
+        print(f"⚠ Warning: {manifest} not found, LM will only have lexicon words.")
 
-    kenlm requires at least bigrams, so we generate unigrams for all
-    vocabulary words plus drug→unit / drug→frequency bigrams.
+    with open(corpus_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+    # ── 2. Run lmplz or warn if missing ──
+    lmplz_bin = shutil.which("lmplz")
+    if not lmplz_bin:
+        # Sometimes installed inside virtualenv bin but not resolving if path weird
+        # Check standard locations:
+        possible = [
+            os.path.join(os.path.dirname(sys.executable), "lmplz"),
+            "lmplz"
+        ]
+        for p in possible:
+            if shutil.which(p) or os.path.exists(p):
+                lmplz_bin = p
+                break
+
+    if not lmplz_bin:
+        print("⚠ lmplz not found in PATH.")
+        print("  KenLM was installed via pip, which doesn't compile the lmplz binary.")
+        print("  To get real statistics, compile KenLM from source (cmake & make) and put lmplz in PATH.")
+        print("  Falling back to naive uniform ARPA generation...")
+        build_arpa_programmatic(output_path)
+        return
+
+    print(f"Running {lmplz_bin} to generate 2-gram ARPA...")
+    try:
+        with open(corpus_path, "rb") as fin, open(output_path, "wb") as fout:
+            subprocess.run([lmplz_bin, "-o", "2", "--text", "/dev/stdin", "--arpa", "/dev/stdout"],
+                           stdin=fin, stdout=fout, check=False) # check=False because lmplz could return non-zero informally
+        with open(output_path, "r") as f:
+            header = f.readline()
+        if "\\data\\" not in header:
+             print("lmplz failed to produce valid ARPA.")
+        else:
+             print(f"  ✓ ARPA language model written to {output_path}")
+    except Exception as e:
+        print(f"lmplz execution failed: {e}")
+        print("Falling back to naive uniform ARPA generation...")
+        build_arpa_programmatic(output_path)
+
+
+def build_arpa_programmatic(output_path: str):
+    """
+    Generate a bigram ARPA language model using uniform stats.
+    Fallback when lmplz is unavailable.
     """
     # Collect all vocabulary words
     words = set()

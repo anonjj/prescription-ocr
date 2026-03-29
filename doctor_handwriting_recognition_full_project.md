@@ -108,7 +108,7 @@ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,-/'()+
 
 ### Environment
 
-Training was performed on **Google Colab** (NVIDIA T4 GPU) due to the MacBook Air development machine lacking a GPU.
+Training was performed on **Kaggle** (NVIDIA P100 GPU) due to the MacBook Air development machine lacking a GPU.
 
 ### Hyperparameters
 
@@ -126,11 +126,9 @@ Training was performed on **Google Colab** (NVIDIA T4 GPU) due to the MacBook Ai
 
 | Metric | Value |
 |--------|-------|
-| Best CER | **0.2840** (28.4%) |
-| Best epoch | 32 |
-| Early stopping | Epoch 48 |
+| Target CER | **< 0.15** (under 15%) |
 
-CER of 28.4% means approximately 28 characters are misrecognised per 100 characters — reasonable for a CRNN trained from scratch on prescription data.
+CER is targeted to be under 15% using the new EfficientNet + STN architecture + medical LM beam search.
 
 ---
 
@@ -325,7 +323,7 @@ Projecat/
 | CER | Character Error Rate = edit\_distance(pred, target) / len(target) |
 | WER | Word Error Rate = edit\_distance(pred\_words, target\_words) / len(target\_words) |
 
-**Achieved:** CER **0.2840** on test set.
+**Target:** CER **<0.15** on test set.
 
 ---
 
