@@ -4,6 +4,7 @@ Demo inference CLI for Doctor Handwriting OCR.
 Usage:
   python demo.py <image_path>         — recognize text from an image
   python demo.py --camera             — capture from webcam and recognize
+  python demo.py scan.png --greedy    — force greedy decoding
 """
 import os
 import sys
@@ -11,9 +12,9 @@ import argparse
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import CHECKPOINTS_DIR, BLANK_LABEL
+from config import CHECKPOINTS_DIR, BLANK_LABEL, CNN_BACKBONE, SEQ_MODEL, USE_STN, USE_BEAM_SEARCH
 from model.crnn import CRNN
-from model.utils import decode_prediction
+from model.utils import decode_prediction, smart_decode
 from preprocessing.transforms import preprocess_image
 from postprocessing.lexicon import fuzzy_correct, correct_prescription_text
 from postprocessing.rules import extract_all
@@ -30,19 +31,25 @@ def load_model(checkpoint_path: str = None):
         print(f"    Train the model first, or specify a checkpoint path.")
         sys.exit(1)
 
-    model = CRNN().to(device)
+    # Load checkpoint and detect architecture
     ckpt = torch.load(ckpt_path, map_location=device)
+    backbone = ckpt.get("backbone", CNN_BACKBONE)
+    seq_model = ckpt.get("seq_model", SEQ_MODEL)
+    use_stn = ckpt.get("use_stn", USE_STN)
+
+    model = CRNN(backbone=backbone, seq_model=seq_model, use_stn=use_stn).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 
     epoch = ckpt.get("epoch", "?")
     cer = ckpt.get("best_cer", "?")
-    print(f"  ✓ Model loaded (epoch {epoch}, best CER: {cer})")
+    arch = f"{backbone}+{seq_model}" + ("+STN" if use_stn else "")
+    print(f"  ✓ Model loaded ({arch}, epoch {epoch}, best CER: {cer})")
 
     return model, device
 
 
-def recognize_image(image_path: str, model, device):
+def recognize_image(image_path: str, model, device, use_beam: bool = USE_BEAM_SEARCH):
     """Run OCR on a single image."""
     # Preprocess
     img = preprocess_image(image_path, full_pipeline=True)
@@ -56,12 +63,16 @@ def recognize_image(image_path: str, model, device):
         log_probs = model(img_tensor)  # (seq_len, 1, num_classes)
 
     # Decode
-    _, preds = log_probs.max(2)
-    pred_indices = preds.squeeze(1).cpu().tolist()  # (seq_len,)
-    raw_text = decode_prediction(pred_indices)
+    sample_log_probs = log_probs.squeeze(1)  # (seq_len, num_classes)
+
+    if use_beam:
+        raw_text = smart_decode(log_probs=sample_log_probs, use_beam=True)
+    else:
+        _, preds = log_probs.max(2)
+        pred_indices = preds.squeeze(1).cpu().tolist()  # (seq_len,)
+        raw_text = decode_prediction(pred_indices)
 
     # Confidence
-    sample_log_probs = log_probs.squeeze(1)  # (seq_len, num_classes)
     confidence = compute_confidence(sample_log_probs)
     review_flag = needs_review(confidence)
 
@@ -157,11 +168,13 @@ Examples:
   python demo.py prescription.jpg
   python demo.py --camera
   python demo.py scan.png --checkpoint models/checkpoints/best_model.pt
+  python demo.py scan.png --greedy
         """
     )
     parser.add_argument("image", nargs="?", help="Path to prescription image")
     parser.add_argument("--camera", action="store_true", help="Capture from webcam")
     parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint")
+    parser.add_argument("--greedy", action="store_true", help="Force greedy decoding (skip beam search)")
     args = parser.parse_args()
 
     if not args.image and not args.camera:
@@ -184,7 +197,8 @@ Examples:
             sys.exit(1)
 
     # Recognize
-    result = recognize_image(image_path, model, device)
+    use_beam = USE_BEAM_SEARCH and not args.greedy
+    result = recognize_image(image_path, model, device, use_beam=use_beam)
     display_result(result, image_path)
 
 

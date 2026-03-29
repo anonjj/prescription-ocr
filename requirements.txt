@@ -12,5 +12,13 @@ editdistance>=0.6.0
 fuzzywuzzy>=0.18.0
 python-Levenshtein>=0.21.0
 tqdm>=4.65.0
-craft-text-detector>=0.4.2   # Option 3: text region detection before CRNN
-albumentations>=1.4.0         # Option 1: training augmentation pipeline
+craft-text-detector>=0.4.2   # text region detection before CRNN
+albumentations>=1.4.0         # training augmentation pipeline
+
+# ── New dependencies for CER improvements ──
+pyctcdecode>=0.5.0            # beam search CTC decoding with LM support
+kenlm                         # language model backend for pyctcdecode
+                              # install: pip install https://github.com/kpu/kenlm/archive/master.zip
+                              # (requires cmake and C++ build tools)
+efficientnet_pytorch>=0.7.0   # EfficientNet-B0 backbone (fallback if torchvision lacks it)
+trdg>=1.8.0                   # TextRecognitionDataGenerator for synthetic data

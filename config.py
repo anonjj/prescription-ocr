@@ -57,10 +57,51 @@ RNN_NUM_LAYERS = 2
 RNN_DROPOUT = 0.3
 
 # ──────────────────────────────────────────────
+# CNN Backbone  ("vgg" | "efficientnet")
+# ──────────────────────────────────────────────
+CNN_BACKBONE = "vgg"           # "vgg" = original 5-block CNN, "efficientnet" = pretrained EfficientNet-B0
+
+# ──────────────────────────────────────────────
+# Sequence model  ("bilstm" | "transformer")
+# ──────────────────────────────────────────────
+SEQ_MODEL = "bilstm"           # "bilstm" = original BiLSTM, "transformer" = Transformer encoder
+TRANSFORMER_HEADS = 4
+TRANSFORMER_LAYERS = 4
+TRANSFORMER_DIM = 512          # d_model (must match CNN output or gets projected)
+TRANSFORMER_FF_DIM = 1024      # feed-forward inner dim
+TRANSFORMER_DROPOUT = 0.1
+
+# ──────────────────────────────────────────────
+# Spatial Transformer Network (STN)
+# ──────────────────────────────────────────────
+USE_STN = False                # learnable geometric rectification before CNN
+
+# ──────────────────────────────────────────────
+# Beam search decoding
+# ──────────────────────────────────────────────
+USE_BEAM_SEARCH = True         # True → beam search w/ LM, False → greedy
+BEAM_WIDTH = 10
+LM_ALPHA = 0.5                # language-model weight
+LM_BETA = 1.0                 # word-insertion bonus
+
+# ──────────────────────────────────────────────
+# Augmentation
+# ──────────────────────────────────────────────
+AUGMENT_LEVEL = "strong"       # "none" | "light" | "strong"
+USE_SYNTHETIC_DATA = False     # merge synthetic CSV during training
+SYNTHETIC_COUNT = 5000         # default number of synthetic samples to generate
+
+# ──────────────────────────────────────────────
+# Curriculum learning
+# ──────────────────────────────────────────────
+USE_CURRICULUM = False         # sort by difficulty for early epochs
+CURRICULUM_WARMUP = 20         # epochs of curriculum before full shuffle
+
+# ──────────────────────────────────────────────
 # Post-processing
 # ──────────────────────────────────────────────
-CONFIDENCE_THRESHOLD = 0.6  # below → NEEDS_REVIEW
-FUZZY_MATCH_THRESHOLD = 80  # fuzzywuzzy score
+CONFIDENCE_THRESHOLD = 0.6    # below → NEEDS_REVIEW
+FUZZY_MATCH_THRESHOLD = 80    # fuzzywuzzy score
 
 # ──────────────────────────────────────────────
 # Dataset identifiers

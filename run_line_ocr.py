@@ -3,7 +3,10 @@ Run OCR line-by-line on a prescription image using model.ptl (TorchScript).
 Uses CRAFT text detector for tight bounding boxes when available,
 falls back to morphological detection otherwise.
 
+Supports beam search decoding with medical language model.
+
 Usage: python3 run_line_ocr.py <image_path>
+       python3 run_line_ocr.py <image_path> --greedy
 """
 import os
 import sys
@@ -12,9 +15,10 @@ import numpy as np  # type: ignore
 import torch  # type: ignore
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import IMG_HEIGHT, IMG_WIDTH, IDX_TO_CHAR, BLANK_LABEL  # type: ignore
+from config import IMG_HEIGHT, IMG_WIDTH, IDX_TO_CHAR, BLANK_LABEL, USE_BEAM_SEARCH  # type: ignore
 from postprocessing.confidence import compute_confidence, needs_review  # type: ignore
 from postprocessing.lexicon import correct_prescription_text  # type: ignore
+from model.utils import decode_prediction, smart_decode  # type: ignore
 
 # CRAFT detector — optional dependency
 try:
@@ -44,19 +48,6 @@ def load_model():
     detector = "CRAFT" if CRAFT_AVAILABLE else "morphological (install craft-text-detector for better results)"
     print(f"  ✓ Loaded model.ptl  |  text detector: {detector}")
     return model
-
-
-# ── CTC Decoding ───────────────────────────────────────────────────────────────
-
-def decode_ctc(log_probs_tensor):
-    """Greedy CTC decode from (seq_len, num_classes) log probs."""
-    indices = log_probs_tensor.argmax(dim=1).tolist()
-    chars, prev = [], None
-    for idx in indices:
-        if idx != BLANK_LABEL and idx != prev:
-            chars.append(IDX_TO_CHAR.get(idx, ""))
-        prev = idx
-    return "".join(chars)
 
 
 # ── Image Preprocessing ────────────────────────────────────────────────────────
@@ -196,7 +187,7 @@ def detect_lines_morphological(image_bgr, min_line_height=12, padding=4):
 
 # ── Inference ──────────────────────────────────────────────────────────────────
 
-def run(image_path):
+def run(image_path, use_beam=USE_BEAM_SEARCH):
     model = load_model()
     img = cv2.imread(image_path)
     if img is None:
@@ -212,7 +203,8 @@ def run(image_path):
     else:
         lines = detect_lines_morphological(img)
 
-    print(f"  ✓ Detected {len(lines)} text lines\n")
+    decode_mode = "beam search" if use_beam else "greedy"
+    print(f"  ✓ Detected {len(lines)} text lines  |  decoding: {decode_mode}\n")
     print("=" * 60)
 
     for i, (x1, y1, x2, y2) in enumerate(lines):
@@ -227,7 +219,9 @@ def run(image_path):
             log_probs = model(tensor)  # (seq_len, 1, num_classes)
 
         log_probs_seq = log_probs.squeeze(1)  # (seq_len, num_classes)
-        raw_text = decode_ctc(log_probs_seq)
+
+        # Decode with beam search or greedy
+        raw_text = smart_decode(log_probs=log_probs_seq, use_beam=use_beam)
         confidence = compute_confidence(log_probs_seq)
         review = needs_review(confidence)
 
@@ -250,7 +244,12 @@ def run(image_path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python3 run_line_ocr.py <image_path>")
-        sys.exit(0)
-    run(sys.argv[1])
+    import argparse
+    parser = argparse.ArgumentParser(description="Run line-by-line OCR on prescription image")
+    parser.add_argument("image", help="Path to prescription image")
+    parser.add_argument("--greedy", action="store_true",
+                        help="Force greedy decoding (skip beam search)")
+    args = parser.parse_args()
+
+    use_beam = USE_BEAM_SEARCH and not args.greedy
+    run(args.image, use_beam=use_beam)

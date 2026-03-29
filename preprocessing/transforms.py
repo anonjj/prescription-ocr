@@ -1,6 +1,11 @@
 """
 Image preprocessing pipeline for handwriting OCR.
-3: Grayscale → Denoise → CLAHE → Binarize (Otsu/Adaptive) → Deskew → Resize+Pad.
+Grayscale → Denoise → CLAHE → Binarize (Otsu/Adaptive) → Deskew → Resize+Pad.
+
+Augmentation levels:
+  - "none": no augmentation
+  - "light": original pipeline (affine, brightness, noise, elastic)
+  - "strong": adds perspective, motion blur, grid distortion, coarse dropout
 """
 import cv2  # type: ignore
 import numpy as np  # type: ignore
@@ -8,7 +13,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import IMG_HEIGHT, IMG_WIDTH  # type: ignore
+from config import IMG_HEIGHT, IMG_WIDTH, AUGMENT_LEVEL  # type: ignore
 
 
 def to_grayscale(img: np.ndarray) -> np.ndarray:
@@ -83,14 +88,26 @@ def resize_pad(img: np.ndarray, target_h: int = IMG_HEIGHT,
     return padded
 
 
-def get_augmentation_pipeline():
-    """Return an albumentations augmentation pipeline for training."""
+def get_augmentation_pipeline(level: str = "light"):
+    """
+    Return an albumentations augmentation pipeline for training.
+
+    Args:
+        level: "light" (original), "strong" (enhanced), or "none"
+
+    Returns:
+        albumentations.Compose pipeline
+    """
     try:
         import albumentations as A  # type: ignore
     except ImportError:
         raise ImportError("albumentations not installed. Run: pip install albumentations")
 
-    return A.Compose([
+    if level == "none":
+        return None
+
+    # Light augmentation — original pipeline
+    light_transforms = [
         A.Affine(
             scale=(0.85, 1.15), rotate=(-10, 10),
             fill=255, p=0.6
@@ -98,19 +115,52 @@ def get_augmentation_pipeline():
         A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
         A.GaussNoise(std_range=(0.02, 0.11), p=0.4),
         A.ElasticTransform(alpha=20, sigma=4, p=0.3),
-    ])
+    ]
+
+    if level == "light":
+        return A.Compose(light_transforms)
+
+    # Strong augmentation — adds camera-specific distortions
+    strong_transforms = light_transforms + [
+        # Perspective distortion — simulates phone camera angles
+        A.Perspective(scale=(0.03, 0.08), p=0.4),
+
+        # Motion blur — simulates camera shake
+        A.MotionBlur(blur_limit=(3, 7), p=0.3),
+
+        # Grid distortion — simulates paper warping/curling
+        A.GridDistortion(num_steps=5, distort_limit=0.2, p=0.3),
+
+        # Coarse dropout — simulates ink smudges or partial occlusion
+        A.CoarseDropout(
+            num_holes_range=(1, 3),
+            hole_height_range=(4, 8),
+            hole_width_range=(4, 8),
+            fill=255, p=0.2
+        ),
+
+        # Downscale then upscale — simulates low-resolution capture
+        A.Downscale(scale_range=(0.5, 0.8), p=0.2),
+
+        # Sharpen — counteracts blur augmentation variety
+        A.Sharpen(alpha=(0.1, 0.3), lightness=(0.8, 1.0), p=0.2),
+    ]
+
+    return A.Compose(strong_transforms)
 
 
 def preprocess_image(img_path: str, full_pipeline: bool = True,
-                     augment: bool = False) -> np.ndarray:
+                     augment: bool = False,
+                     augment_level: str = AUGMENT_LEVEL) -> np.ndarray:
     """
     Full preprocessing pipeline for a handwriting image.
 
     Args:
         img_path: Path to the image file.
-        full_pipeline: If True,  apply denoise + CLAHE + binarize + deskew.
-                       If False, apply denoise + CLAHE only (no binarization).
-                       Empirically CLAHE-only preserves more stroke detail than thresholding.
+        full_pipeline: If True,  apply denoise + CLAHE + deskew.
+                       If False, apply denoise + CLAHE only.
+        augment: Whether to apply augmentation.
+        augment_level: "none", "light", or "strong"
 
     Returns:
         Preprocessed image as numpy array (H x W, uint8).
@@ -128,9 +178,10 @@ def preprocess_image(img_path: str, full_pipeline: bool = True,
         # img = binarize(img, method="otsu")
         img = deskew(img)
 
-    if augment:
-        pipeline = get_augmentation_pipeline()
-        img = pipeline(image=img)["image"]
+    if augment and augment_level != "none":
+        pipeline = get_augmentation_pipeline(level=augment_level)
+        if pipeline is not None:
+            img = pipeline(image=img)["image"]
 
     img = resize_pad(img)
     return img
