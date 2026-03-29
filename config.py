@@ -113,6 +113,10 @@ KAGGLE_DATASETS = {
 
 HUGGINGFACE_DATASETS = {
     "iam_line": "Teklia/IAM-line",
+    "iam_word": "Teklia/IAM-word",
+    "rimes_line": "Teklia/RIMES-line",
+    "sroie": "darentang/sroie",
+    "medical_prescription": "chinmays18/medical-prescription-dataset"
 }
 
 # ──────────────────────────────────────────────

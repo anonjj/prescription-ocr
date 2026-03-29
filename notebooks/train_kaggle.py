@@ -11,7 +11,7 @@ Kaggle Notebook Training Script for Doctor Handwriting OCR.
 
 === HOW TO USE ===
 1. Go to kaggle.com/code → New Notebook
-2. Settings → Accelerator → GPU P100 (or T4 x2)
+2. Settings → Accelerator → GPU T4 x2
 3. Settings → Internet → On
 4. Copy-paste each CELL section below into separate notebook cells
 5. Run cells in order
@@ -193,7 +193,7 @@ if __name__ == "__main__":
     print("  Copy each CELL section into a Kaggle notebook cell.")
     print()
     print("  Settings to enable in Kaggle:")
-    print("  - Accelerator: GPU P100")
+    print("  - Accelerator: GPU T4 x2 (Do NOT use P100, it is unsupported by modern PyTorch)")
     print("  - Internet: On")
     print()
     print("  Checkpoint location: /kaggle/working/checkpoints/")

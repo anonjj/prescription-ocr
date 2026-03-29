@@ -1,6 +1,7 @@
 # Data
 data/raw/
 data/processed/
+*.zip
 
 # Models
 models/checkpoints/

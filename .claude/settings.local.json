@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix preprocessing mismatch between training and evaluation\n\nTraining used full_pipeline=False but evaluation used full_pipeline=True,\ncausing the model to see different input distributions at test time.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(mkdir -p /Users/jayjoshi/Documents/ML/Projecat/api && mkdir -p /Users/jayjoshi/Documents/ML/Projecat/android/app/src/main/java/com/ocr/prescriptionocr && mkdir -p /Users/jayjoshi/Documents/ML/Projecat/android/app/src/main/res/layout && mkdir -p /Users/jayjoshi/Documents/ML/Projecat/android/app/src/main/res/values && mkdir -p /Users/jayjoshi/Documents/ML/Projecat/android/app/src/main/res/drawable && echo \"dirs created\")",
+      "Bash(python:*)",
+      "Bash(pip3 install:*)",
+      "mcp__claude_ai_Hugging_Face__hub_repo_details",
+      "mcp__claude_ai_Hugging_Face__hub_repo_search"
+    ]
+  }
+}

@@ -108,7 +108,7 @@ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,-/'()+
 
 ### Environment
 
-Training was performed on **Kaggle** (NVIDIA P100 GPU) due to the MacBook Air development machine lacking a GPU.
+Training was performed on **Kaggle** (NVIDIA T4 x2 GPU) due to the MacBook Air development machine lacking a GPU.
 
 ### Hyperparameters
 
