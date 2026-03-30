@@ -231,7 +231,7 @@ def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
             optimizer.zero_grad(set_to_none=True)
 
             if use_amp:
-                with autocast(device_type="cuda"):
+                with get_autocast():
                     outputs = model(images)
                     seq_len = outputs.size(0)
                     batch_size_actual = images.size(0)
