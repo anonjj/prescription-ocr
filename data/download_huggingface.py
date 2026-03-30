@@ -8,12 +8,11 @@ import argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from config import RAW_DIR, HUGGINGFACE_DATASETS  # type: ignore
 
-# Dataset-specific column overrides — add at top of file
-COLUMN_OVERRIDES = {
-    "medical_prescription": {"image_col": "image", "label_col": "label"},
-    "rimes_line": {"image_col": "image", "label_col": "text"},
-    "iam_word": {"image_col": "image", "label_col": "text"},
-    "iam_line": {"image_col": "image", "label_col": "text"},
+# Dataset-specific column overrides
+DATASET_COLUMN_MAP = {
+    "medical_prescription": {"label_cols": ["label", "text", "word"]},
+    "iam_word":             {"label_cols": ["text", "label"]},
+    "iam_line":             {"label_cols": ["text", "label"]},
 }
 
 
@@ -53,23 +52,25 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
                 
                 for idx, sample in enumerate(tqdm(split, desc=f"              {split_name}")):
                     # Get column overrides if available
-                    overrides = COLUMN_OVERRIDES.get(name, {})
+                    overrides = DATASET_COLUMN_MAP.get(name, {})
                     
                     # Try common column names for image
                     img = None
-                    if "image_col" in overrides and overrides["image_col"] in sample:
-                        img = sample[overrides["image_col"]]
-                    else:
-                        for col in ["image", "img", "pixel_values"]:
-                            if col in sample:
-                                img = sample[col]
-                                break
+                    for col in ["image", "img", "pixel_values"]:
+                        if col in sample:
+                            img = sample[col]
+                            break
 
                     # Try common column names for label
                     label = None
-                    if "label_col" in overrides and overrides["label_col"] in sample:
-                        label = sample[overrides["label_col"]]
-                    else:
+                    # Use overrides first
+                    if "label_cols" in overrides:
+                        for col in overrides["label_cols"]:
+                            if col in sample:
+                                label = sample[col]
+                                break
+                    
+                    if label is None:
                         for col in ["text", "label", "transcription", "ground_truth", "word"]:
                             if col in sample:
                                 label = sample[col]
@@ -84,6 +85,10 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
 
                     if hasattr(img, "save"):
                         img.save(img_path)  # type: ignore
+                    elif isinstance(img, dict) and "bytes" in img:
+                        from PIL import Image
+                        import io
+                        Image.open(io.BytesIO(img["bytes"])).convert("L").save(img_path)
                     else:
                         from PIL import Image  # type: ignore
                         Image.fromarray(img).save(img_path)

@@ -70,10 +70,6 @@ else:
 # Kaggle API credentials are pre-configured in Kaggle notebooks — no upload needed.
 # HuggingFace datasets download via internet (must be ON in settings).
 
-!pip install -q huggingface_hub
-from huggingface_hub import login
-login(token="YOUR_HF_TOKEN")  # create at huggingface.co/settings/tokens
-
 import sys
 sys.path.insert(0, '/kaggle/working/Projecat')
 
@@ -207,6 +203,16 @@ if __name__ == "__main__":
     print()
     print("  Settings to enable in Kaggle:")
     print("  - Accelerator: GPU T4 x2 (Do NOT use P100, it is unsupported by modern PyTorch)")
+    print("  - Internet: On")
+    print()
+    print("  Checkpoint location: /kaggle/working/checkpoints/")
+    print("  - latest.pt     saved every epoch")
+    print("  - best_model.pt saved when CER improves")
+    print("  - epoch_N.pt    milestone every 10 epochs")
+    print()
+    print("  To resume across sessions: see CELL 8")
+    print("=" * 60)
+rch)")
     print("  - Internet: On")
     print()
     print("  Checkpoint location: /kaggle/working/checkpoints/")

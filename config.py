@@ -107,16 +107,13 @@ FUZZY_MATCH_THRESHOLD = 80    # fuzzywuzzy score
 # Dataset identifiers
 # ──────────────────────────────────────────────
 KAGGLE_DATASETS = {
-    "rxhandbd":        "banasmitajena/rxhandbd",
     "prescription_bd": "mamun1113/doctors-handwritten-prescription-bd-dataset",
-    "ocr_processed":   "nadaarfaoui/ocr-processed-handwritten-prescriptions",
 }
 
 HUGGINGFACE_DATASETS = {
     "iam_line": "Teklia/IAM-line",
     "iam_word": "Teklia/IAM-word",
-    "rimes_line": "Teklia/RIMES-line",
-    "medical_prescription": "chinmays18/medical-prescription-dataset"
+    "medical_prescription": "chinmays18/medical-prescription-dataset",
 }
 
 # ──────────────────────────────────────────────
