@@ -32,13 +32,38 @@ from config import (
 from model.crnn import CRNN, count_parameters
 from model.dataset import HandwritingDataset, CurriculumSampler, collate_fn
 from model.utils import decode_prediction, smart_decode, compute_cer, compute_wer
+from contextlib import nullcontext
 
-# Mixed precision support (CUDA only)
+# Mixed precision support
 try:
-    from torch.cuda.amp import autocast, GradScaler
+    # Modern torch.amp
+    from torch.amp import autocast, GradScaler
+    def get_autocast(device_type):
+        if device_type == "cuda":
+            return autocast(device_type="cuda")
+        return nullcontext()
+    def get_scaler(device_type):
+        if device_type == "cuda":
+            return GradScaler(device_type="cuda")
+        return None
     AMP_AVAILABLE = True
-except ImportError:
-    AMP_AVAILABLE = False
+except (ImportError, AttributeError):
+    try:
+        # Legacy torch.cuda.amp
+        from torch.cuda.amp import autocast, GradScaler
+        def get_autocast(device_type):
+            if device_type == "cuda":
+                return autocast()
+            return nullcontext()
+        def get_scaler(device_type):
+            if device_type == "cuda":
+                return GradScaler()
+            return None
+        AMP_AVAILABLE = True
+    except ImportError:
+        def get_autocast(device_type): return nullcontext()
+        def get_scaler(device_type): return None
+        AMP_AVAILABLE = False
 
 
 def get_device():
