@@ -107,7 +107,7 @@ FUZZY_MATCH_THRESHOLD = 80    # fuzzywuzzy score
 # Dataset identifiers
 # ──────────────────────────────────────────────
 KAGGLE_DATASETS = {
-    "rxhandbd":        "mshofique/rxhandbd-dataset",
+    "rxhandbd":        "banasmitajena/rxhandbd",
     "prescription_bd": "mamun1113/doctors-handwritten-prescription-bd-dataset",
     "ocr_processed":   "nadaarfaoui/ocr-processed-handwritten-prescriptions",
 }

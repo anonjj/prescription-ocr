@@ -42,9 +42,9 @@ def download_kaggle_dataset(identifier: str, target_dir: str, dry_run: bool = Fa
         print(f"         ✓ Done ({len(os.listdir(dest))} items)")
 
     except Exception as e:
-        print(f"         ✗ Error: {e}")
+        print(f"         ✗ Error downloading {identifier}: {e}")
         print("         Make sure ~/.kaggle/kaggle.json exists and is valid.")
-        raise
+        # Not raising — allows other datasets to continue
 
 
 def download_all_kaggle(dry_run: bool = False):

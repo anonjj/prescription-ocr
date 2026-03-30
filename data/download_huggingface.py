@@ -13,6 +13,7 @@ COLUMN_OVERRIDES = {
     "medical_prescription": {"image_col": "image", "label_col": "label"},
     "rimes_line": {"image_col": "image", "label_col": "text"},
     "iam_word": {"image_col": "image", "label_col": "text"},
+    "iam_line": {"image_col": "image", "label_col": "text"},
 }
 
 
