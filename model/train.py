@@ -361,9 +361,3 @@ if __name__ == "__main__":
           use_curriculum=args.curriculum,
           curriculum_warmup=args.curriculum_warmup,
           use_synthetic=args.synthetic)
-ot args.no_augment,
-          backbone=args.backbone, seq_model=args.seq_model, use_stn=args.stn,
-          use_beam=use_beam, augment_level=args.augment_level,
-          use_curriculum=args.curriculum,
-          curriculum_warmup=args.curriculum_warmup,
-          use_synthetic=args.synthetic)
