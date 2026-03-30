@@ -128,7 +128,7 @@ def get_augmentation_pipeline(level: str = "light"):
     # Strong augmentation — adds camera-specific distortions
     strong_transforms = light_transforms + [
         # Perspective distortion — simulates phone camera angles
-        A.Perspective(scale=(0.03, 0.08), p=0.4, pad_val=0),
+        A.Perspective(scale=(0.03, 0.08), p=0.4),
 
         # Motion blur — simulates camera shake
         A.MotionBlur(blur_limit=(3, 7), p=0.3),

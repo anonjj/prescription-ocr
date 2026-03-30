@@ -231,7 +231,7 @@ def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
             optimizer.zero_grad(set_to_none=True)
 
             if use_amp:
-                with autocast():
+                with autocast(device_type="cuda"):
                     outputs = model(images)
                     seq_len = outputs.size(0)
                     batch_size_actual = images.size(0)
@@ -359,5 +359,8 @@ if __name__ == "__main__":
           backbone=args.backbone, seq_model=args.seq_model, use_stn=args.stn,
           use_beam=use_beam, augment_level=args.augment_level,
           use_curriculum=args.curriculum,
+          curriculum_warmup=args.curriculum_warmup,
+          use_synthetic=args.synthetic)
+   use_curriculum=args.curriculum,
           curriculum_warmup=args.curriculum_warmup,
           use_synthetic=args.synthetic)
