@@ -70,10 +70,23 @@ else:
 # Kaggle API credentials are pre-configured in Kaggle notebooks — no upload needed.
 # HuggingFace datasets download via internet (must be ON in settings).
 
+!pip install -q huggingface_hub
+from huggingface_hub import login
+login(token="YOUR_HF_TOKEN")  # create at huggingface.co/settings/tokens
+
 import sys
 sys.path.insert(0, '/kaggle/working/Projecat')
 
 !python data/download_all.py
+
+# Debug download step
+import os
+from config import RAW_DIR
+for d in os.listdir(RAW_DIR):
+    path = os.path.join(RAW_DIR, d)
+    if os.path.isdir(path):
+        imgs = sum(1 for _, _, f in os.walk(path) for x in f if x.endswith(('.png','.jpg','.webp')))
+        print(f"{d}: {imgs} images")
 
 # Verify
 !python data/audit_datasets.py

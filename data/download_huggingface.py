@@ -8,6 +8,13 @@ import argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from config import RAW_DIR, HUGGINGFACE_DATASETS  # type: ignore
 
+# Dataset-specific column overrides — add at top of file
+COLUMN_OVERRIDES = {
+    "medical_prescription": {"image_col": "image", "label_col": "label"},
+    "rimes_line": {"image_col": "image", "label_col": "text"},
+    "iam_word": {"image_col": "image", "label_col": "text"},
+}
+
 
 def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bool = False):
     """Download a HuggingFace dataset and save images + labels."""
@@ -44,19 +51,28 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
                 from tqdm import tqdm  # type: ignore
                 
                 for idx, sample in enumerate(tqdm(split, desc=f"              {split_name}")):
+                    # Get column overrides if available
+                    overrides = COLUMN_OVERRIDES.get(name, {})
+                    
                     # Try common column names for image
                     img = None
-                    for col in ["image", "img", "pixel_values"]:
-                        if col in sample:
-                            img = sample[col]
-                            break
+                    if "image_col" in overrides and overrides["image_col"] in sample:
+                        img = sample[overrides["image_col"]]
+                    else:
+                        for col in ["image", "img", "pixel_values"]:
+                            if col in sample:
+                                img = sample[col]
+                                break
 
                     # Try common column names for label
                     label = None
-                    for col in ["text", "label", "transcription", "ground_truth", "word"]:
-                        if col in sample:
-                            label = sample[col]
-                            break
+                    if "label_col" in overrides and overrides["label_col"] in sample:
+                        label = sample[overrides["label_col"]]
+                    else:
+                        for col in ["text", "label", "transcription", "ground_truth", "word"]:
+                            if col in sample:
+                                label = sample[col]
+                                break
 
                     if img is None or label is None:
                         continue
@@ -77,8 +93,10 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
         print(f"              ✓ Done ({total} samples saved)")
 
     except Exception as e:
-        print(f"              ✗ Error: {e}")
-        # Not raising the exception to allow other datasets to download.
+        import traceback
+        print(f"              ✗ Error downloading {identifier}:")
+        traceback.print_exc()
+        # Not raising — allows other datasets to continue
 
 
 def download_all_huggingface(dry_run: bool = False):
