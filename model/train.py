@@ -65,7 +65,7 @@ def validate(model, val_loader, ctc_loss, device, use_amp=False,
             labels = labels.to(device, non_blocking=True)
 
             if use_amp and AMP_AVAILABLE:
-                with autocast():
+                with get_autocast(device.type):
                     outputs = model(images)
                     seq_len = outputs.size(0)
                     batch_size = images.size(0)
@@ -231,7 +231,7 @@ def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
             optimizer.zero_grad(set_to_none=True)
 
             if use_amp:
-                with get_autocast():
+                with get_autocast(device.type):
                     outputs = model(images)
                     seq_len = outputs.size(0)
                     batch_size_actual = images.size(0)
@@ -356,6 +356,12 @@ if __name__ == "__main__":
     train(epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
           resume_from=args.resume, cache_tensors=args.cache,
           augment=not args.no_augment,
+          backbone=args.backbone, seq_model=args.seq_model, use_stn=args.stn,
+          use_beam=use_beam, augment_level=args.augment_level,
+          use_curriculum=args.curriculum,
+          curriculum_warmup=args.curriculum_warmup,
+          use_synthetic=args.synthetic)
+ot args.no_augment,
           backbone=args.backbone, seq_model=args.seq_model, use_stn=args.stn,
           use_beam=use_beam, augment_level=args.augment_level,
           use_curriculum=args.curriculum,
