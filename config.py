@@ -41,10 +41,10 @@ IDX_TO_CHAR = {i + 1: ch for i, ch in enumerate(CHARS)}
 # Training hyperparameters
 # ──────────────────────────────────────────────
 BATCH_SIZE = 256
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 3e-4
 NUM_EPOCHS = 100
-PATIENCE = 15
-LR_STEP_SIZE = 30
+PATIENCE = 20
+LR_STEP_SIZE = 20
 LR_GAMMA = 0.1
 NUM_WORKERS = 4
 

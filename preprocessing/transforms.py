@@ -81,8 +81,13 @@ def resize_pad(img: np.ndarray, target_h: int = IMG_HEIGHT,
 
     resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-    # Pad to target width with white
-    padded = np.ones((target_h, target_w), dtype=np.uint8) * 255
+    # Invert so text is white (255) on black (0) background
+    # This is standard for many OCR architectures and more stable for padding
+    if np.mean(resized) > 127:
+        resized = cv2.bitwise_not(resized)
+
+    # Pad to target width with black (0)
+    padded = np.zeros((target_h, target_w), dtype=np.uint8)
     padded[:, :new_w] = resized
 
     return padded
@@ -110,7 +115,7 @@ def get_augmentation_pipeline(level: str = "light"):
     light_transforms = [
         A.Affine(
             scale=(0.85, 1.15), rotate=(-10, 10),
-            fill=255, p=0.6
+            fill=0, p=0.6
         ),
         A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
         A.GaussNoise(std_range=(0.02, 0.11), p=0.4),
@@ -123,7 +128,7 @@ def get_augmentation_pipeline(level: str = "light"):
     # Strong augmentation — adds camera-specific distortions
     strong_transforms = light_transforms + [
         # Perspective distortion — simulates phone camera angles
-        A.Perspective(scale=(0.03, 0.08), p=0.4),
+        A.Perspective(scale=(0.03, 0.08), p=0.4, pad_val=0),
 
         # Motion blur — simulates camera shake
         A.MotionBlur(blur_limit=(3, 7), p=0.3),
@@ -136,7 +141,7 @@ def get_augmentation_pipeline(level: str = "light"):
             num_holes_range=(1, 3),
             hole_height_range=(4, 8),
             hole_width_range=(4, 8),
-            fill=255, p=0.2
+            fill=0, p=0.2
         ),
 
         # Downscale then upscale — simulates low-resolution capture
