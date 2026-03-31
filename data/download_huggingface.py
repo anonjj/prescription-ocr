@@ -10,7 +10,7 @@ from config import RAW_DIR, HUGGINGFACE_DATASETS  # type: ignore
 
 # Dataset-specific column overrides
 DATASET_COLUMN_MAP = {
-    "medical_prescription": {"label_cols": ["label", "text", "word"]},
+    "medical_prescription": {"label_cols": ["label", "text", "word", "ground_truth"]},
     "iam_word":             {"label_cols": ["text", "label"]},
     "iam_line":             {"label_cols": ["text", "label"]},
 }
@@ -33,6 +33,7 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
     try:
         from datasets import load_dataset  # type: ignore
         import csv
+        import json
 
         ds = load_dataset(identifier, trust_remote_code=True)
 
@@ -68,6 +69,19 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
                         for col in overrides["label_cols"]:
                             if col in sample:
                                 label = sample[col]
+                                # If it's a JSON string (common in Donut datasets), extract text
+                                if isinstance(label, str) and label.strip().startswith("{") and label.strip().endswith("}"):
+                                    try:
+                                        data = json.loads(label)
+                                        if "gt_parse" in data:
+                                            # Convert dict to a single string for CRNN
+                                            parse = data["gt_parse"]
+                                            if isinstance(parse, dict):
+                                                label = " ".join([str(v) for v in parse.values() if v])
+                                            else:
+                                                label = str(parse)
+                                    except:
+                                        pass
                                 break
                     
                     if label is None:
@@ -91,7 +105,11 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
                         Image.open(io.BytesIO(img["bytes"])).convert("L").save(img_path)
                     else:
                         from PIL import Image  # type: ignore
-                        Image.fromarray(img).save(img_path)
+                        try:
+                            Image.fromarray(img).save(img_path)
+                        except:
+                            # If it's still not working, skip this sample
+                            continue
 
                     writer.writerow([os.path.join("images", img_filename), str(label), split_name])
                     total += 1
