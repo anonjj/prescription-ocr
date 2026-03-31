@@ -8,9 +8,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from config import PROCESSED_DIR, CHARS
 
-def label_is_clean(text, charset):
-    """Check if label contains only allowed characters."""
-    return all(ch in charset for ch in str(text))
+def clean_label(text, charset):
+    """Strip characters that are not in the allowed charset."""
+    return "".join(ch for ch in str(text) if ch in charset)
 
 def main():
     charset = set(CHARS)
@@ -28,10 +28,12 @@ def main():
     manifest = manifest[manifest['source_dataset'] != 'ocr-processed-handwritten-prescriptions']
     print(f"Removed ocr-processed: {original_len} → {len(manifest)}")
 
-    # Fix 2: Remove samples with out-of-charset characters
+    # Fix 2: Strip bad-charset characters instead of dropping
     before = len(manifest)
-    manifest = manifest[manifest['text_label'].apply(lambda x: label_is_clean(x, charset))]
-    print(f"Removed bad-charset labels: {before} → {len(manifest)}")
+    manifest['text_label'] = manifest['text_label'].apply(lambda x: clean_label(x, charset))
+    # Drop rows that are now empty after stripping
+    manifest = manifest[manifest['text_label'].str.len() >= 1]
+    print(f"Stripped bad-charset chars: {before} → {len(manifest)} valid samples")
 
     # Fix 3: Remove empty labels (keep single-char labels as they are valid OCR samples)
     before = len(manifest)

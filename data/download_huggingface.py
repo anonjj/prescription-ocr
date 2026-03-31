@@ -90,6 +90,8 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
                             if "gt_parse" in label:
                                 parse = label["gt_parse"]
                                 if isinstance(parse, dict):
+                                    # Take the longest string value (most likely the text)
+                                    # Or join all values
                                     label = " ".join([str(v) for v in parse.values() if v])
                                 else:
                                     label = str(parse)
@@ -98,6 +100,9 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
                                 label = " ".join([str(v) for v in label.values() if v])
                     
                     if img is None or label is None:
+                        if idx == 0:
+                            print(f"              ! Sample 0 failed: img={type(img)}, label={type(label)}")
+                            print(f"              ! Keys in sample: {list(sample.keys())}")
                         continue
 
                     # Save image
