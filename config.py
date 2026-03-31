@@ -29,7 +29,7 @@ IMG_CHANNELS = 1  # grayscale
 # Character set
 # ──────────────────────────────────────────────
 # 0 = CTC blank token
-CHARS = string.ascii_letters + string.digits + " .,-/'()+"
+CHARS = string.ascii_letters + string.digits + " .,-/'()+#:[]&;*%"
 BLANK_LABEL = 0
 NUM_CLASSES = len(CHARS) + 1  # +1 for CTC blank
 

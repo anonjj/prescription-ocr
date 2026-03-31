@@ -33,10 +33,10 @@ def main():
     manifest = manifest[manifest['text_label'].apply(lambda x: label_is_clean(x, charset))]
     print(f"Removed bad-charset labels: {before} → {len(manifest)}")
 
-    # Fix 3: Remove single-char labels (too short to be useful)
+    # Fix 3: Remove empty labels (keep single-char labels as they are valid OCR samples)
     before = len(manifest)
-    manifest = manifest[manifest['text_label'].astype(str).str.len() >= 2]
-    print(f"Removed single-char labels: {before} → {len(manifest)}")
+    manifest = manifest[manifest['text_label'].astype(str).str.len() >= 1]
+    print(f"Removed empty labels: {before} → {len(manifest)}")
 
     # Save cleaned manifest
     clean_path = os.path.join(PROCESSED_DIR, 'manifest_clean.csv')

@@ -69,27 +69,34 @@ def download_hf_dataset(name: str, identifier: str, target_dir: str, dry_run: bo
                         for col in overrides["label_cols"]:
                             if col in sample:
                                 label = sample[col]
-                                # If it's a JSON string (common in Donut datasets), extract text
-                                if isinstance(label, str) and label.strip().startswith("{") and label.strip().endswith("}"):
-                                    try:
-                                        data = json.loads(label)
-                                        if "gt_parse" in data:
-                                            # Convert dict to a single string for CRNN
-                                            parse = data["gt_parse"]
-                                            if isinstance(parse, dict):
-                                                label = " ".join([str(v) for v in parse.values() if v])
-                                            else:
-                                                label = str(parse)
-                                    except:
-                                        pass
                                 break
                     
                     if label is None:
-                        for col in ["text", "label", "transcription", "ground_truth", "word"]:
+                        for col in ["text", "label", "transcription", "ground_truth", "word", "gt_parse"]:
                             if col in sample:
                                 label = sample[col]
                                 break
 
+                    if label is not None:
+                        # Handle Dict or JSON string (common in Donut datasets)
+                        if isinstance(label, str) and label.strip().startswith("{"):
+                            try:
+                                label = json.loads(label)
+                            except:
+                                pass
+                        
+                        if isinstance(label, dict):
+                            # Try to find 'gt_parse'
+                            if "gt_parse" in label:
+                                parse = label["gt_parse"]
+                                if isinstance(parse, dict):
+                                    label = " ".join([str(v) for v in parse.values() if v])
+                                else:
+                                    label = str(parse)
+                            else:
+                                # Fallback: join all values
+                                label = " ".join([str(v) for v in label.values() if v])
+                    
                     if img is None or label is None:
                         continue
 

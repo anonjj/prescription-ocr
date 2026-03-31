@@ -55,16 +55,30 @@ def process_csv_dataset(dataset_dir: str, dataset_name: str,
                 for row in reader:
                     # Try to get image path
                     img_path = None
-                    for col in ["image_path", "filename", "image", "IMAGE", "file", "image_name", "image_file"]:
+                    for col in ["image_path", "filename", "image", "IMAGE", "file", "image_name", "image_file", "img"]:
                         if col in row and row[col]:
                             img_path = row[col]
                             break
 
                     # Try to get label
                     label = None
-                    for col in ["text_label", "text", "label", "MEDICINE_NAME", "transcription", "word", "ground_truth"]:
+                    # Prioritize common labels
+                    for col in ["text_label", "text", "label", "MEDICINE_NAME", "transcription", "word", "ground_truth", "gt_parse"]:
                         if col in row and row[col]:
                             label = row[col]
+                            
+                            # Handle JSON strings (Donut/DocVQA style)
+                            if isinstance(label, str) and label.strip().startswith("{"):
+                                try:
+                                    data = json.loads(label)
+                                    if "gt_parse" in data:
+                                        parse = data["gt_parse"]
+                                        if isinstance(parse, dict):
+                                            label = " ".join([str(v) for v in parse.values() if v])
+                                        else:
+                                            label = str(parse)
+                                except:
+                                    pass
                             break
 
                     # Translate numeric labels if we have a mapping
