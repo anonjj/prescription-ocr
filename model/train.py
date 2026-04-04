@@ -44,7 +44,10 @@ try:
         return nullcontext()
     def get_scaler(device_type):
         if device_type == "cuda":
-            return GradScaler(device_type="cuda")
+            try:
+                return GradScaler("cuda")
+            except TypeError:
+                return GradScaler()
         return None
     AMP_AVAILABLE = True
 except (ImportError, AttributeError):

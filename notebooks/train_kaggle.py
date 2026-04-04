@@ -49,14 +49,26 @@ print("Setup complete")
 # ============================================================
 """
 import os
+import shutil
+
+%cd /kaggle/working
 
 REPO_DIR = '/kaggle/working/Projecat'
+REPO_URL = 'https://github.com/anonjj/prescription-ocr.git'
+PARENT_DIR = '/kaggle/working'
 
-if not os.path.exists(REPO_DIR):
-    !git clone https://github.com/anonjj/prescription-ocr.git {REPO_DIR}
-else:
+git_dir = os.path.join(REPO_DIR, '.git')
+os.makedirs(PARENT_DIR, exist_ok=True)
+os.chdir(PARENT_DIR)
+
+if os.path.isdir(git_dir):
     print("Repo already exists, pulling latest...")
     !git -C {REPO_DIR} pull
+else:
+    if os.path.exists(REPO_DIR):
+        print("Existing directory is not a git repo. Removing it and cloning a fresh copy...")
+        shutil.rmtree(REPO_DIR)
+    !git clone {REPO_URL} {REPO_DIR}
 
 %cd {REPO_DIR}
 !ls
@@ -163,13 +175,7 @@ print(f"Parameters: {count_parameters(model):,}")
 # ============================================================
 """
 %cd /kaggle/working/Projecat
-!python model/train.py \\
-    --backbone efficientnet \\
-    --stn \\
-    --augment-level strong \\
-    --beam \\
-    --checkpoint-name best_model.pt \\
-    --final-checkpoint-name final_model.pt
+!python model/train.py --backbone efficientnet --stn --augment-level strong --beam --checkpoint-name best_model.pt --final-checkpoint-name final_model.pt
 """
 
 # ============================================================
@@ -191,10 +197,7 @@ for name in ["best_model.pt", "final_model.pt"]:
 # ============================================================
 """
 %cd /kaggle/working/Projecat
-!python model/evaluate.py \\
-    --split test \\
-    --save-predictions \\
-    --checkpoint /kaggle/working/Projecat/models/checkpoints/best_model.pt
+!python model/evaluate.py --split test --save-predictions --checkpoint /kaggle/working/Projecat/models/checkpoints/best_model.pt
 """
 
 # ============================================================
