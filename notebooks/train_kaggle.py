@@ -17,11 +17,8 @@ Kaggle Notebook Training Script for Doctor Handwriting OCR.
 5. Run cells in order
 
 Checkpoint strategy:
-  /kaggle/working/Projecat/models/checkpoints/stage1_best_model.pt    ← best base-training checkpoint
-  /kaggle/working/Projecat/models/checkpoints/stage1_final_model.pt   ← final base-training checkpoint
-  /kaggle/working/Projecat/models/checkpoints/finetune_best_model.pt  ← best fine-tuned checkpoint
-  /kaggle/working/Projecat/models/checkpoints/finetune_final_model.pt ← final fine-tuned checkpoint
-  Files are stage-specific so stage 2 cannot overwrite stage 1.
+  /kaggle/working/Projecat/models/checkpoints/best_model.pt  ← best checkpoint for the current training run
+  /kaggle/working/Projecat/models/checkpoints/final_model.pt ← final checkpoint for the current training run
   On session end, Kaggle auto-saves /kaggle/working/ as notebook output.
   On next session: attach previous notebook output as a dataset to resume.
 """
@@ -95,29 +92,26 @@ for d in os.listdir(RAW_DIR):
 """
 
 # ============================================================
-# CELL 4: Prepare Data (base + fine-tune splits)
+# CELL 4: Prepare Data
 # ============================================================
 """
 %cd /kaggle/working/Projecat
 
-# Check if manifest + splits already exist (skip if resuming)
+# Check if manifest + base splits already exist (skip if resuming)
 import os
 PROCESSED_DIR = '/tmp/ocr_data/processed'
 
-base_ready = os.path.exists(os.path.join(PROCESSED_DIR, 'train.csv'))
-finetune_ready = os.path.exists(os.path.join(PROCESSED_DIR, 'finetune_train.csv'))
-
-if base_ready and finetune_ready:
-    print("Base + fine-tune splits already exist, skipping data prep.")
+if os.path.exists(os.path.join(PROCESSED_DIR, 'train.csv')):
+    print("Base splits already exist, skipping data prep.")
 else:
     manifest_path = os.path.join(PROCESSED_DIR, 'manifest_clean.csv')
     if not os.path.exists(manifest_path):
         !python data/create_unified_manifest.py
         !python data/clean_manifest.py
-    !python data/split_data.py --finetune
+    !python data/split_data.py
 
 import pandas as pd
-for split in ['train', 'val', 'test', 'finetune_train', 'finetune_val', 'finetune_test']:
+for split in ['train', 'val', 'test']:
     path = os.path.join(PROCESSED_DIR, f'{split}.csv')
     if os.path.exists(path):
         df = pd.read_csv(path)
@@ -165,7 +159,7 @@ print(f"Parameters: {count_parameters(model):,}")
 """
 
 # ============================================================
-# CELL 6: Train Stage 1 (general handwriting)
+# CELL 6: Train Current Run
 # ============================================================
 """
 %cd /kaggle/working/Projecat
@@ -174,56 +168,18 @@ print(f"Parameters: {count_parameters(model):,}")
     --stn \\
     --augment-level strong \\
     --beam \\
-    --checkpoint-name stage1_best_model.pt \\
-    --final-checkpoint-name stage1_final_model.pt
+    --checkpoint-name best_model.pt \\
+    --final-checkpoint-name final_model.pt
 """
 
 # ============================================================
-# CELL 6A: Verify Stage 1 Checkpoints
+# CELL 6A: Verify Current Run Checkpoints
 # ============================================================
 """
 import os
 
 CKPT_DIR = "/kaggle/working/Projecat/models/checkpoints"
-for name in ["stage1_best_model.pt", "stage1_final_model.pt"]:
-    path = os.path.join(CKPT_DIR, name)
-    print(name, "FOUND" if os.path.exists(path) else "MISSING")
-    if os.path.exists(path):
-        print("  size_mb:", round(os.path.getsize(path) / (1024 * 1024), 2))
-"""
-
-# ============================================================
-# CELL 6B: Train Stage 2 (prescription fine-tune)
-# ============================================================
-"""
-%cd /kaggle/working/Projecat
-!python model/train.py \\
-    --backbone efficientnet \\
-    --stn \\
-    --augment-level strong \\
-    --greedy \\
-    --batch-size 64 \\
-    --lr 1e-5 \\
-    --epochs 50 \\
-    --finetune \\
-    --resume /kaggle/working/Projecat/models/checkpoints/stage1_best_model.pt \\
-    --checkpoint-name finetune_best_model.pt \\
-    --final-checkpoint-name finetune_final_model.pt
-"""
-
-# ============================================================
-# CELL 6C: Verify Fine-Tune Checkpoints
-# ============================================================
-"""
-import os
-
-CKPT_DIR = "/kaggle/working/Projecat/models/checkpoints"
-for name in [
-    "stage1_best_model.pt",
-    "stage1_final_model.pt",
-    "finetune_best_model.pt",
-    "finetune_final_model.pt",
-]:
+for name in ["best_model.pt", "final_model.pt"]:
     path = os.path.join(CKPT_DIR, name)
     print(name, "FOUND" if os.path.exists(path) else "MISSING")
     if os.path.exists(path):
@@ -238,22 +194,11 @@ for name in [
 !python model/evaluate.py \\
     --split test \\
     --save-predictions \\
-    --checkpoint /kaggle/working/Projecat/models/checkpoints/finetune_best_model.pt
+    --checkpoint /kaggle/working/Projecat/models/checkpoints/best_model.pt
 """
 
 # ============================================================
-# CELL 7B: Evaluate Prescription-Only Test Set
-# ============================================================
-"""
-%cd /kaggle/working/Projecat
-!python model/evaluate.py \\
-    --csv-path /tmp/ocr_data/processed/finetune_test.csv \\
-    --save-predictions \\
-    --checkpoint /kaggle/working/Projecat/models/checkpoints/finetune_best_model.pt
-"""
-
-# ============================================================
-# CELL 7C: Create Export Bundle Before Save Version
+# CELL 7B: Create Export Bundle Before Save Version
 # ============================================================
 """
 import os, shutil
@@ -262,12 +207,7 @@ src_dir = "/kaggle/working/Projecat/models/checkpoints"
 bundle_dir = "/kaggle/working/export_bundle/checkpoints"
 os.makedirs(bundle_dir, exist_ok=True)
 
-for name in [
-    "stage1_best_model.pt",
-    "stage1_final_model.pt",
-    "finetune_best_model.pt",
-    "finetune_final_model.pt",
-]:
+for name in ["best_model.pt", "final_model.pt"]:
     src = os.path.join(src_dir, name)
     if os.path.exists(src):
         shutil.copy2(src, os.path.join(bundle_dir, name))
@@ -323,9 +263,8 @@ if __name__ == "__main__":
     print("  - Internet: On")
     print()
     print("  Checkpoint location: /kaggle/working/Projecat/models/checkpoints/")
-    print("  - stage1_best_model.pt / stage1_final_model.pt")
-    print("  - finetune_best_model.pt / finetune_final_model.pt")
-    print("  Verify files in Cells 6A and 6C before using Save Version")
+    print("  - best_model.pt / final_model.pt")
+    print("  Verify files in Cell 6A before using Save Version")
     print()
     print("  To resume across sessions: see CELL 8")
     print("=" * 60)
