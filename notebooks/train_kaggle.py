@@ -4,7 +4,7 @@ Kaggle Notebook Training Script for Doctor Handwriting OCR.
 === KEY DIFFERENCES vs COLAB ===
 - No Drive mount needed — checkpoints saved to /kaggle/working/ (persists across sessions)
 - Kaggle API credentials pre-configured (no kaggle.json upload)
-- P100 GPU available (16GB VRAM vs T4's 15GB — can push batch size higher)
+- Use GPU T4 x2 in Kaggle settings for PyTorch compatibility
 - 30h/week GPU quota, 12h session limit
 - Internet must be ON in notebook settings to clone from GitHub & download HF datasets
 - Kaggle datasets attached via "Add Data" panel — no re-download needed across sessions
@@ -17,9 +17,11 @@ Kaggle Notebook Training Script for Doctor Handwriting OCR.
 5. Run cells in order
 
 Checkpoint strategy:
-  /kaggle/working/checkpoints/latest.pt   ← saved every epoch (resume point)
-  /kaggle/working/checkpoints/best_model.pt ← saved when CER improves
-  /kaggle/working/checkpoints/epoch_N.pt  ← milestone every 10 epochs
+  /kaggle/working/Projecat/models/checkpoints/stage1_best_model.pt    ← best base-training checkpoint
+  /kaggle/working/Projecat/models/checkpoints/stage1_final_model.pt   ← final base-training checkpoint
+  /kaggle/working/Projecat/models/checkpoints/finetune_best_model.pt  ← best fine-tuned checkpoint
+  /kaggle/working/Projecat/models/checkpoints/finetune_final_model.pt ← final fine-tuned checkpoint
+  Files are stage-specific so stage 2 cannot overwrite stage 1.
   On session end, Kaggle auto-saves /kaggle/working/ as notebook output.
   On next session: attach previous notebook output as a dataset to resume.
 """
@@ -39,7 +41,7 @@ if torch.cuda.is_available():
     print(f"GPU: {torch.cuda.get_device_name(0)}")
     print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
-CKPT_DIR = '/kaggle/working/checkpoints'
+CKPT_DIR = '/kaggle/working/Projecat/models/checkpoints'
 os.makedirs(CKPT_DIR, exist_ok=True)
 print(f"Checkpoint dir: {CKPT_DIR}")
 print("Setup complete")
@@ -93,7 +95,7 @@ for d in os.listdir(RAW_DIR):
 """
 
 # ============================================================
-# CELL 4: Prepare Data (split into train/val/test)
+# CELL 4: Prepare Data (base + fine-tune splits)
 # ============================================================
 """
 %cd /kaggle/working/Projecat
@@ -102,16 +104,24 @@ for d in os.listdir(RAW_DIR):
 import os
 PROCESSED_DIR = '/tmp/ocr_data/processed'
 
-if os.path.exists(os.path.join(PROCESSED_DIR, 'train.csv')):
-    print("Splits already exist, skipping data prep.")
-    import pandas as pd
-    for split in ['train', 'val', 'test']:
-        df = pd.read_csv(os.path.join(PROCESSED_DIR, f'{split}.csv'))
-        print(f"  {split}: {len(df):,} samples")
+base_ready = os.path.exists(os.path.join(PROCESSED_DIR, 'train.csv'))
+finetune_ready = os.path.exists(os.path.join(PROCESSED_DIR, 'finetune_train.csv'))
+
+if base_ready and finetune_ready:
+    print("Base + fine-tune splits already exist, skipping data prep.")
 else:
-    !python data/create_unified_manifest.py
-    !python data/clean_manifest.py
-    !python data/split_data.py
+    manifest_path = os.path.join(PROCESSED_DIR, 'manifest_clean.csv')
+    if not os.path.exists(manifest_path):
+        !python data/create_unified_manifest.py
+        !python data/clean_manifest.py
+    !python data/split_data.py --finetune
+
+import pandas as pd
+for split in ['train', 'val', 'test', 'finetune_train', 'finetune_val', 'finetune_test']:
+    path = os.path.join(PROCESSED_DIR, f'{split}.csv')
+    if os.path.exists(path):
+        df = pd.read_csv(path)
+        print(f"  {split}: {len(df):,} samples")
 """
 
 # ============================================================
@@ -155,22 +165,118 @@ print(f"Parameters: {count_parameters(model):,}")
 """
 
 # ============================================================
-# CELL 6: Train
+# CELL 6: Train Stage 1 (general handwriting)
 # ============================================================
 """
 %cd /kaggle/working/Projecat
-!python model/train.py --backbone efficientnet --stn --augment-level strong --beam
+!python model/train.py \\
+    --backbone efficientnet \\
+    --stn \\
+    --augment-level strong \\
+    --beam \\
+    --checkpoint-name stage1_best_model.pt \\
+    --final-checkpoint-name stage1_final_model.pt
 """
 
 # ============================================================
-# CELL 7: Evaluate
+# CELL 6A: Verify Stage 1 Checkpoints
+# ============================================================
+"""
+import os
+
+CKPT_DIR = "/kaggle/working/Projecat/models/checkpoints"
+for name in ["stage1_best_model.pt", "stage1_final_model.pt"]:
+    path = os.path.join(CKPT_DIR, name)
+    print(name, "FOUND" if os.path.exists(path) else "MISSING")
+    if os.path.exists(path):
+        print("  size_mb:", round(os.path.getsize(path) / (1024 * 1024), 2))
+"""
+
+# ============================================================
+# CELL 6B: Train Stage 2 (prescription fine-tune)
+# ============================================================
+"""
+%cd /kaggle/working/Projecat
+!python model/train.py \\
+    --backbone efficientnet \\
+    --stn \\
+    --augment-level strong \\
+    --greedy \\
+    --batch-size 64 \\
+    --lr 1e-5 \\
+    --epochs 50 \\
+    --finetune \\
+    --resume /kaggle/working/Projecat/models/checkpoints/stage1_best_model.pt \\
+    --checkpoint-name finetune_best_model.pt \\
+    --final-checkpoint-name finetune_final_model.pt
+"""
+
+# ============================================================
+# CELL 6C: Verify Fine-Tune Checkpoints
+# ============================================================
+"""
+import os
+
+CKPT_DIR = "/kaggle/working/Projecat/models/checkpoints"
+for name in [
+    "stage1_best_model.pt",
+    "stage1_final_model.pt",
+    "finetune_best_model.pt",
+    "finetune_final_model.pt",
+]:
+    path = os.path.join(CKPT_DIR, name)
+    print(name, "FOUND" if os.path.exists(path) else "MISSING")
+    if os.path.exists(path):
+        print("  size_mb:", round(os.path.getsize(path) / (1024 * 1024), 2))
+"""
+
+# ============================================================
+# CELL 7: Evaluate Full Test Set
 # ============================================================
 """
 %cd /kaggle/working/Projecat
 !python model/evaluate.py \\
     --split test \\
     --save-predictions \\
-    --checkpoint /kaggle/working/checkpoints/best_model.pt
+    --checkpoint /kaggle/working/Projecat/models/checkpoints/finetune_best_model.pt
+"""
+
+# ============================================================
+# CELL 7B: Evaluate Prescription-Only Test Set
+# ============================================================
+"""
+%cd /kaggle/working/Projecat
+!python model/evaluate.py \\
+    --csv-path /tmp/ocr_data/processed/finetune_test.csv \\
+    --save-predictions \\
+    --checkpoint /kaggle/working/Projecat/models/checkpoints/finetune_best_model.pt
+"""
+
+# ============================================================
+# CELL 7C: Create Export Bundle Before Save Version
+# ============================================================
+"""
+import os, shutil
+
+src_dir = "/kaggle/working/Projecat/models/checkpoints"
+bundle_dir = "/kaggle/working/export_bundle/checkpoints"
+os.makedirs(bundle_dir, exist_ok=True)
+
+for name in [
+    "stage1_best_model.pt",
+    "stage1_final_model.pt",
+    "finetune_best_model.pt",
+    "finetune_final_model.pt",
+]:
+    src = os.path.join(src_dir, name)
+    if os.path.exists(src):
+        shutil.copy2(src, os.path.join(bundle_dir, name))
+        print("bundled:", name)
+    else:
+        print("missing:", name)
+
+print("Export bundle:", bundle_dir)
+print("Save Version only after the expected files appear above.")
 """
 
 # ============================================================
@@ -184,16 +290,22 @@ print(f"Parameters: {count_parameters(model):,}")
 # 2. Go to the saved version → "..." menu → "Add as Dataset"
 #    (or: kaggle.com/datasets → New Dataset → from notebook output)
 # 3. In your new session, add that dataset via "Add Data" panel
-# 4. Copy checkpoints into working dir before training:
+# 4. Copy checkpoints into repo checkpoint dir before training:
 
 import shutil, os, glob
 
-# Find the attached checkpoint dataset (adjust path as needed)
-prev_ckpts = glob.glob('/kaggle/input/*/checkpoints/*.pt')
+# Find the attached checkpoint dataset (support both old and new output layouts)
+prev_ckpts = []
+for pattern in (
+    '/kaggle/input/*/Projecat/models/checkpoints/*.pt',
+    '/kaggle/input/*/checkpoints/*.pt',
+):
+    prev_ckpts.extend(glob.glob(pattern))
+
 if prev_ckpts:
-    os.makedirs('/kaggle/working/checkpoints', exist_ok=True)
-    for f in prev_ckpts:
-        shutil.copy(f, '/kaggle/working/checkpoints/')
+    os.makedirs('/kaggle/working/Projecat/models/checkpoints', exist_ok=True)
+    for f in sorted(set(prev_ckpts)):
+        shutil.copy(f, '/kaggle/working/Projecat/models/checkpoints/')
         print(f'Copied: {os.path.basename(f)}')
 else:
     print('No previous checkpoints found — starting fresh')
@@ -210,10 +322,10 @@ if __name__ == "__main__":
     print("  - Accelerator: GPU T4 x2 (Do NOT use P100, it is unsupported by modern PyTorch)")
     print("  - Internet: On")
     print()
-    print("  Checkpoint location: /kaggle/working/checkpoints/")
-    print("  - latest.pt     saved every epoch")
-    print("  - best_model.pt saved when CER improves")
-    print("  - epoch_N.pt    milestone every 10 epochs")
+    print("  Checkpoint location: /kaggle/working/Projecat/models/checkpoints/")
+    print("  - stage1_best_model.pt / stage1_final_model.pt")
+    print("  - finetune_best_model.pt / finetune_final_model.pt")
+    print("  Verify files in Cells 6A and 6C before using Save Version")
     print()
     print("  To resume across sessions: see CELL 8")
     print("=" * 60)

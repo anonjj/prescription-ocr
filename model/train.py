@@ -136,23 +136,60 @@ def validate(model, val_loader, ctc_loss, device, use_amp=False,
     return avg_loss, avg_cer, avg_wer
 
 
-def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
+def freeze_backbone(model):
+    """Freeze the CNN backbone for prescription-specific fine-tuning."""
+    for param in model.cnn.parameters():
+        param.requires_grad = False
+
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total = sum(p.numel() for p in model.parameters())
+    print(f"  Frozen backbone: {trainable:,} / {total:,} params trainable")
+
+
+def resolve_data_paths(finetune: bool = False):
+    """Return train/val CSV paths for base training or fine-tuning."""
+    prefix = "finetune_" if finetune else ""
+    return (
+        os.path.join(PROCESSED_DIR, f"{prefix}train.csv"),
+        os.path.join(PROCESSED_DIR, f"{prefix}val.csv"),
+    )
+
+
+def train(epochs=None, batch_size=None, lr=None,
           resume_from=None, cache_tensors=False, augment=True,
           backbone=CNN_BACKBONE, seq_model=SEQ_MODEL, use_stn=USE_STN,
           use_beam=USE_BEAM_SEARCH, augment_level=AUGMENT_LEVEL,
           use_curriculum=USE_CURRICULUM, curriculum_warmup=CURRICULUM_WARMUP,
-          use_synthetic=USE_SYNTHETIC_DATA):
+          use_synthetic=USE_SYNTHETIC_DATA, finetune=False,
+          checkpoint_name: str = "best_model.pt",
+          final_checkpoint_name: str = "final_model.pt"):
     """Main training function."""
     device = get_device()
     print(f"\n  Device: {device}")
 
     # Mixed precision (CUDA only)
     use_amp = device.type == "cuda" and AMP_AVAILABLE
-    scaler = GradScaler() if use_amp else None
+    scaler = get_scaler(device.type) if use_amp else None
     if use_amp:
         print("  Mixed precision: enabled")
 
+    if finetune:
+        epochs = epochs if epochs is not None else 50
+        batch_size = batch_size if batch_size is not None else 64
+        lr = lr if lr is not None else 1e-5
+        patience = max(PATIENCE, 20)
+        scheduler_step_size = min(LR_STEP_SIZE, 10)
+        train_csv, val_csv = resolve_data_paths(finetune=True)
+    else:
+        epochs = epochs if epochs is not None else NUM_EPOCHS
+        batch_size = batch_size if batch_size is not None else BATCH_SIZE
+        lr = lr if lr is not None else LEARNING_RATE
+        patience = PATIENCE
+        scheduler_step_size = LR_STEP_SIZE
+        train_csv, val_csv = resolve_data_paths(finetune=False)
+
     # ── Architecture info ──
+    print(f"  Mode: {'fine-tune' if finetune else 'base training'}")
     print(f"  Backbone: {backbone}")
     print(f"  Sequence model: {seq_model}")
     print(f"  STN: {'enabled' if use_stn else 'disabled'}")
@@ -160,14 +197,21 @@ def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
     print(f"  Augmentation: {augment_level if augment else 'disabled'}")
     print(f"  Curriculum: {'enabled (warmup={})'.format(curriculum_warmup) if use_curriculum else 'disabled'}")
     print(f"  Synthetic data: {'enabled' if use_synthetic else 'disabled'}")
+    print(f"  Epochs: {epochs}")
+    print(f"  Batch size: {batch_size}")
+    print(f"  Learning rate: {lr:g}")
+    print(f"  LR step size: {scheduler_step_size}")
+    print(f"  Early stopping patience: {patience}")
+    print(f"  Best checkpoint file: {checkpoint_name}")
+    print(f"  Final checkpoint file: {final_checkpoint_name}")
 
     # ── Load Data ──
-    train_csv = os.path.join(PROCESSED_DIR, "train.csv")
-    val_csv = os.path.join(PROCESSED_DIR, "val.csv")
-
-    if not os.path.exists(train_csv):
+    if not os.path.exists(train_csv) or not os.path.exists(val_csv):
         print(f"  Training data not found: {train_csv}")
-        print("  Run the data pipeline first.")
+        if finetune:
+            print("  Run: python data/split_data.py --finetune")
+        else:
+            print("  Run the data pipeline first.")
         return
 
     train_dataset = HandwritingDataset(
@@ -203,10 +247,18 @@ def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
     ).to(device)
     print(f"  Parameters: {count_parameters(model):,}")
 
+    if finetune:
+        freeze_backbone(model)
+        if use_synthetic:
+            print("  Fine-tune mode: synthetic data is still enabled")
+
     # ── Loss & Optimizer ──
     ctc_loss = nn.CTCLoss(blank=BLANK_LABEL, zero_infinity=True)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=LR_STEP_SIZE, gamma=LR_GAMMA)
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.Adam(trainable_params, lr=lr)
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, step_size=scheduler_step_size, gamma=LR_GAMMA
+    )
 
     start_epoch = 0
     best_cer = float("inf")
@@ -216,10 +268,36 @@ def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
     if resume_from and os.path.exists(resume_from):
         checkpoint = torch.load(resume_from, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        start_epoch = checkpoint.get("epoch", 0) + 1
-        best_cer = checkpoint.get("best_cer", float("inf"))
-        print(f"  Resumed from epoch {start_epoch}, best CER: {best_cer:.4f}")
+        checkpoint_finetune = checkpoint.get("finetune", False)
+
+        if finetune and not checkpoint_finetune:
+            print("  Loaded pretrained checkpoint for fine-tuning")
+            print("  Optimizer state reset for frozen-backbone training")
+        else:
+            if "optimizer_state_dict" in checkpoint:
+                try:
+                    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+                except ValueError as exc:
+                    print(f"  Optimizer state skipped: {exc}")
+                else:
+                    if "scheduler_state_dict" in checkpoint:
+                        try:
+                            scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+                        except ValueError as exc:
+                            print(f"  Scheduler state skipped: {exc}")
+                    if scaler is not None and "scaler_state_dict" in checkpoint:
+                        try:
+                            scaler.load_state_dict(checkpoint["scaler_state_dict"])
+                        except ValueError as exc:
+                            print(f"  AMP scaler state skipped: {exc}")
+                    start_epoch = checkpoint.get("epoch", 0) + 1
+                    best_cer = checkpoint.get("best_cer", float("inf"))
+                    print(f"  Resumed from epoch {start_epoch}, best CER: {best_cer:.4f}")
+            elif checkpoint.get("epoch") is not None:
+                start_epoch = checkpoint.get("epoch", 0) + 1
+                best_cer = checkpoint.get("best_cer", float("inf"))
+    elif resume_from:
+        print(f"  Resume checkpoint not found: {resume_from}")
 
     # ── Training Loop ──
     print(f"\n{'='*70}")
@@ -265,7 +343,7 @@ def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+                torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=5.0)
                 scaler.step(optimizer)
                 scaler.update()
             else:
@@ -276,7 +354,7 @@ def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
                 loss = ctc_loss(outputs, labels, input_lengths, label_lengths)
 
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+                torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=5.0)
                 optimizer.step()
 
             total_train_loss += loss.item()
@@ -298,49 +376,70 @@ def train(epochs=NUM_EPOCHS, batch_size=BATCH_SIZE, lr=LEARNING_RATE,
         if val_cer < best_cer:
             best_cer = val_cer
             patience_counter = 0
-            ckpt_path = os.path.join(CHECKPOINTS_DIR, "best_model.pt")
+            ckpt_path = os.path.join(CHECKPOINTS_DIR, checkpoint_name)
             torch.save({
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
                 "best_cer": best_cer,
                 "backbone": backbone,
                 "seq_model": seq_model,
                 "use_stn": use_stn,
+                "finetune": finetune,
+                "train_csv": train_csv,
+                "val_csv": val_csv,
+                "checkpoint_name": checkpoint_name,
+                "final_checkpoint_name": final_checkpoint_name,
             }, ckpt_path)
             print(f"         ↳ Best model saved (CER: {best_cer:.4f})")
         else:
             patience_counter += 1
-            if patience_counter >= PATIENCE:
-                print(f"\n  Early stopping at epoch {epoch+1} (patience={PATIENCE})")
+            if patience_counter >= patience:
+                print(f"\n  Early stopping at epoch {epoch+1} (patience={patience})")
                 break
 
     # Save final checkpoint
-    final_path = os.path.join(CHECKPOINTS_DIR, "final_model.pt")
+    final_path = os.path.join(CHECKPOINTS_DIR, final_checkpoint_name)
     torch.save({
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+        "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
         "best_cer": best_cer,
         "backbone": backbone,
         "seq_model": seq_model,
         "use_stn": use_stn,
+        "finetune": finetune,
+        "train_csv": train_csv,
+        "val_csv": val_csv,
+        "checkpoint_name": checkpoint_name,
+        "final_checkpoint_name": final_checkpoint_name,
     }, final_path)
 
     print(f"\n{'='*70}")
     print(f"  Training complete! Best CER: {best_cer:.4f}")
-    print(f"  Best checkpoint → {os.path.join(CHECKPOINTS_DIR, 'best_model.pt')}")
+    print(f"  Best checkpoint → {os.path.join(CHECKPOINTS_DIR, checkpoint_name)}")
+    print(f"  Final checkpoint → {final_path}")
     print(f"{'='*70}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train CRNN model")
-    parser.add_argument("--epochs", type=int, default=NUM_EPOCHS)
-    parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
-    parser.add_argument("--lr", type=float, default=LEARNING_RATE)
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
     parser.add_argument("--cache", action="store_true", help="Cache tensors in RAM (faster after epoch 1)")
     parser.add_argument("--no-augment", action="store_true", help="Disable training augmentation")
+    parser.add_argument("--finetune", action="store_true",
+                        help="Fine-tune on prescription-only splits with a frozen CNN backbone")
+    parser.add_argument("--checkpoint-name", type=str, default="best_model.pt",
+                        help="Filename for the best checkpoint inside models/checkpoints")
+    parser.add_argument("--final-checkpoint-name", type=str, default="final_model.pt",
+                        help="Filename for the final checkpoint inside models/checkpoints")
 
     # Architecture selection
     parser.add_argument("--backbone", type=str, default=CNN_BACKBONE,
@@ -385,4 +484,7 @@ if __name__ == "__main__":
           use_beam=use_beam, augment_level=args.augment_level,
           use_curriculum=args.curriculum,
           curriculum_warmup=args.curriculum_warmup,
-          use_synthetic=args.synthetic)
+          use_synthetic=args.synthetic,
+          finetune=args.finetune,
+          checkpoint_name=args.checkpoint_name,
+          final_checkpoint_name=args.final_checkpoint_name)

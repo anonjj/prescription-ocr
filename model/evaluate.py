@@ -24,17 +24,18 @@ from model.utils import decode_prediction, smart_decode, compute_cer, compute_we
 def evaluate(split: str = "test", checkpoint: str = None,
              save_predictions: bool = False, max_samples: int = None,
              use_beam: bool = USE_BEAM_SEARCH,
-             backbone: str = None, seq_model: str = None, use_stn: bool = None):
+             backbone: str = None, seq_model: str = None, use_stn: bool = None,
+             csv_path: str = None):
     """Evaluate model on a data split."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load data
-    csv_path = os.path.join(PROCESSED_DIR, f"{split}.csv")
-    if not os.path.exists(csv_path):
-        print(f"  Data not found: {csv_path}")
+    resolved_csv_path = csv_path or os.path.join(PROCESSED_DIR, f"{split}.csv")
+    if not os.path.exists(resolved_csv_path):
+        print(f"  Data not found: {resolved_csv_path}")
         return
 
-    dataset = HandwritingDataset(csv_path, full_pipeline=True)
+    dataset = HandwritingDataset(resolved_csv_path, full_pipeline=True)
     if max_samples:
         dataset.samples = dataset.samples[:max_samples]
 
@@ -63,8 +64,12 @@ def evaluate(split: str = "test", checkpoint: str = None,
 
     decode_mode = "beam search" if use_beam else "greedy"
     print(f"\n{'='*60}")
-    print(f"  Evaluating on '{split}' set ({len(dataset)} samples)")
+    if csv_path:
+        print(f"  Evaluating custom CSV ({len(dataset)} samples)")
+    else:
+        print(f"  Evaluating on '{split}' set ({len(dataset)} samples)")
     print(f"  Checkpoint: {ckpt_path}")
+    print(f"  Data CSV: {resolved_csv_path}")
     print(f"  Architecture: {_backbone} + {_seq_model}" + (" + STN" if _use_stn else ""))
     print(f"  Decoding: {decode_mode}")
     print(f"{'='*60}")
@@ -148,7 +153,11 @@ def evaluate(split: str = "test", checkpoint: str = None,
 
     # Save predictions
     if save_predictions:
-        pred_path = os.path.join(PROCESSED_DIR, f"predictions_{split}.csv")
+        pred_name = f"predictions_{split}.csv"
+        if csv_path:
+            csv_stem = os.path.splitext(os.path.basename(resolved_csv_path))[0]
+            pred_name = f"predictions_{csv_stem}.csv"
+        pred_path = os.path.join(PROCESSED_DIR, pred_name)
         with open(pred_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=["target", "predicted", "cer", "wer", "exact_match"])
             writer.writeheader()
@@ -163,6 +172,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate CRNN model")
     parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
     parser.add_argument("--checkpoint", type=str, default=None)
+    parser.add_argument("--csv-path", type=str, default=None,
+                        help="Evaluate a specific CSV manifest instead of train/val/test")
     parser.add_argument("--save-predictions", action="store_true")
     parser.add_argument("--max-samples", type=int, default=None)
 
@@ -187,4 +198,5 @@ if __name__ == "__main__":
              save_predictions=args.save_predictions, max_samples=args.max_samples,
              use_beam=use_beam,
              backbone=args.backbone, seq_model=args.seq_model,
-             use_stn=args.stn if args.stn else None)
+             use_stn=args.stn if args.stn else None,
+             csv_path=args.csv_path)
