@@ -14,6 +14,8 @@ import os
 import sys
 import time
 import argparse
+import shutil
+import subprocess
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -21,7 +23,7 @@ from tqdm.auto import tqdm
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from config import (
-    PROCESSED_DIR, CHECKPOINTS_DIR,
+    PROJECT_ROOT, PROCESSED_DIR, CHECKPOINTS_DIR,
     BATCH_SIZE, LEARNING_RATE, NUM_EPOCHS, PATIENCE,
     LR_STEP_SIZE, LR_GAMMA, NUM_WORKERS, BLANK_LABEL,
     CNN_BACKBONE, SEQ_MODEL, USE_STN,
@@ -76,6 +78,78 @@ def get_device():
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
+
+
+def _run_git_command(args, env):
+    """Run a git command and return stripped stdout."""
+    result = subprocess.run(
+        args,
+        cwd=PROJECT_ROOT,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def push_checkpoint_to_github(checkpoint_path: str, epoch_num: int, best_cer: float,
+                              github_push_path: str, github_repository: str,
+                              github_branch: str):
+    """
+    Copy the latest best checkpoint into the repo and push it to GitHub.
+
+    This is opt-in and is intended for long-running Kaggle jobs. Failures are
+    reported but should not stop training.
+    """
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token:
+        print("         ↳ GitHub push skipped: GITHUB_TOKEN/GH_TOKEN not set")
+        return
+
+    repo_name = github_repository or os.environ.get("GITHUB_REPOSITORY")
+    if not repo_name:
+        print("         ↳ GitHub push skipped: repository not configured")
+        return
+
+    branch_name = github_branch or os.environ.get("GITHUB_BRANCH", "main")
+    commit_name = os.environ.get("GITHUB_COMMIT_NAME", "Kaggle Checkpoint Bot")
+    commit_email = os.environ.get("GITHUB_COMMIT_EMAIL", "checkpoint-bot@users.noreply.github.com")
+
+    rel_push_path = github_push_path.strip().lstrip("/")
+    dest_path = os.path.join(PROJECT_ROOT, rel_push_path)
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    shutil.copy2(checkpoint_path, dest_path)
+
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+
+    try:
+        _run_git_command(["git", "config", "user.name", commit_name], env)
+        _run_git_command(["git", "config", "user.email", commit_email], env)
+        _run_git_command(["git", "add", "-f", rel_push_path], env)
+
+        staged_diff = subprocess.run(
+            ["git", "diff", "--cached", "--quiet", "--", rel_push_path],
+            cwd=PROJECT_ROOT,
+            env=env,
+        )
+        if staged_diff.returncode == 0:
+            print("         ↳ GitHub push skipped: checkpoint unchanged")
+            return
+
+        commit_message = f"backup: checkpoint epoch {epoch_num} cer {best_cer:.4f}"
+        _run_git_command(["git", "commit", "-m", commit_message, "--", rel_push_path], env)
+
+        push_url = f"https://x-access-token:{token}@github.com/{repo_name}.git"
+        _run_git_command(["git", "push", push_url, f"HEAD:{branch_name}"], env)
+        print(f"         ↳ Checkpoint pushed to GitHub: {repo_name}@{branch_name} -> {rel_push_path}")
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        if stderr:
+            print(f"         ↳ GitHub push failed: {stderr.splitlines()[-1]}")
+        else:
+            print(f"         ↳ GitHub push failed with exit code {exc.returncode}")
 
 
 def validate(model, val_loader, ctc_loss, device, use_amp=False,
@@ -165,7 +239,13 @@ def train(epochs=None, batch_size=None, lr=None,
           use_curriculum=USE_CURRICULUM, curriculum_warmup=CURRICULUM_WARMUP,
           use_synthetic=USE_SYNTHETIC_DATA, finetune=False,
           checkpoint_name: str = "best_model.pt",
-          final_checkpoint_name: str = "final_model.pt"):
+          final_checkpoint_name: str = "final_model.pt",
+          push_best_to_github: bool = False,
+          push_after_epoch: int = 10,
+          push_every_n_epochs: int = 10,
+          github_push_path: str = "checkpoint_exports/best_model.pt",
+          github_repository: str = None,
+          github_branch: str = "main"):
     """Main training function."""
     device = get_device()
     print(f"\n  Device: {device}")
@@ -207,6 +287,13 @@ def train(epochs=None, batch_size=None, lr=None,
     print(f"  Early stopping patience: {patience}")
     print(f"  Best checkpoint file: {checkpoint_name}")
     print(f"  Final checkpoint file: {final_checkpoint_name}")
+    if push_best_to_github:
+        print(f"  GitHub backup: enabled from epoch {push_after_epoch}")
+        print(f"  GitHub backup interval: every {push_every_n_epochs} epoch(s)")
+        print(f"  GitHub path: {github_push_path}")
+        print(f"  GitHub branch: {github_branch}")
+    else:
+        print("  GitHub backup: disabled")
 
     # ── Load Data ──
     if not os.path.exists(train_csv) or not os.path.exists(val_csv):
@@ -403,6 +490,26 @@ def train(epochs=None, batch_size=None, lr=None,
                 print(f"\n  Early stopping at epoch {epoch+1} (patience={patience})")
                 break
 
+        should_push_checkpoint = (
+            push_best_to_github
+            and push_every_n_epochs > 0
+            and (epoch + 1) >= push_after_epoch
+            and ((epoch + 1 - push_after_epoch) % push_every_n_epochs == 0)
+        )
+        if should_push_checkpoint:
+            best_ckpt_path = os.path.join(CHECKPOINTS_DIR, checkpoint_name)
+            if os.path.exists(best_ckpt_path):
+                push_checkpoint_to_github(
+                    checkpoint_path=best_ckpt_path,
+                    epoch_num=epoch + 1,
+                    best_cer=best_cer,
+                    github_push_path=github_push_path,
+                    github_repository=github_repository,
+                    github_branch=github_branch,
+                )
+            else:
+                print("         ↳ GitHub push skipped: best checkpoint file not found")
+
     # Save final checkpoint
     final_path = os.path.join(CHECKPOINTS_DIR, final_checkpoint_name)
     torch.save({
@@ -443,6 +550,18 @@ if __name__ == "__main__":
                         help="Filename for the best checkpoint inside models/checkpoints")
     parser.add_argument("--final-checkpoint-name", type=str, default="final_model.pt",
                         help="Filename for the final checkpoint inside models/checkpoints")
+    parser.add_argument("--push-best-to-github", action="store_true",
+                        help="Commit and push the best checkpoint to GitHub when it improves")
+    parser.add_argument("--push-after-epoch", type=int, default=10,
+                        help="Do not push checkpoints before this 1-based epoch number")
+    parser.add_argument("--push-every-n-epochs", type=int, default=10,
+                        help="Push the current best checkpoint every N epochs after push-after-epoch")
+    parser.add_argument("--github-push-path", type=str, default="checkpoint_exports/best_model.pt",
+                        help="Repo-relative destination path for the pushed checkpoint")
+    parser.add_argument("--github-repository", type=str, default=None,
+                        help="GitHub repo in owner/name format; falls back to GITHUB_REPOSITORY")
+    parser.add_argument("--github-branch", type=str, default="main",
+                        help="GitHub branch to push the checkpoint commit to")
 
     # Architecture selection
     parser.add_argument("--backbone", type=str, default=CNN_BACKBONE,
@@ -490,4 +609,10 @@ if __name__ == "__main__":
           use_synthetic=args.synthetic,
           finetune=args.finetune,
           checkpoint_name=args.checkpoint_name,
-          final_checkpoint_name=args.final_checkpoint_name)
+          final_checkpoint_name=args.final_checkpoint_name,
+          push_best_to_github=args.push_best_to_github,
+          push_after_epoch=args.push_after_epoch,
+          push_every_n_epochs=args.push_every_n_epochs,
+          github_push_path=args.github_push_path,
+          github_repository=args.github_repository,
+          github_branch=args.github_branch)

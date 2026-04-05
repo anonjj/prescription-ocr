@@ -19,6 +19,7 @@ Kaggle Notebook Training Script for Doctor Handwriting OCR.
 Checkpoint strategy:
   /kaggle/working/Projecat/models/checkpoints/best_model.pt  ← best checkpoint for the current training run
   /kaggle/working/Projecat/models/checkpoints/final_model.pt ← final checkpoint for the current training run
+  checkpoint_exports/best_model.pt                           ← optional GitHub-backed copy every 10 epochs
   On session end, Kaggle auto-saves /kaggle/working/ as notebook output.
   On next session: attach previous notebook output as a dataset to resume.
 """
@@ -42,6 +43,30 @@ CKPT_DIR = '/kaggle/working/Projecat/models/checkpoints'
 os.makedirs(CKPT_DIR, exist_ok=True)
 print(f"Checkpoint dir: {CKPT_DIR}")
 print("Setup complete")
+"""
+
+# ============================================================
+# CELL 1A: Optional GitHub Backup Setup
+# ============================================================
+"""
+# Add a Kaggle secret named GITHUB_TOKEN before running this cell.
+import os
+
+try:
+    from kaggle_secrets import UserSecretsClient
+except ImportError:
+    UserSecretsClient = None
+
+if UserSecretsClient is None:
+    print("kaggle_secrets unavailable — GitHub auto-push disabled")
+else:
+    secrets = UserSecretsClient()
+    os.environ["GITHUB_TOKEN"] = secrets.get_secret("GITHUB_TOKEN")
+    os.environ["GITHUB_REPOSITORY"] = "anonjj/prescription-ocr"
+    os.environ["GITHUB_BRANCH"] = "main"
+    os.environ["GITHUB_COMMIT_NAME"] = "Kaggle Checkpoint Bot"
+    os.environ["GITHUB_COMMIT_EMAIL"] = "checkpoint-bot@users.noreply.github.com"
+    print("GitHub checkpoint backup configured")
 """
 
 # ============================================================
@@ -175,7 +200,34 @@ print(f"Parameters: {count_parameters(model):,}")
 # ============================================================
 """
 %cd /kaggle/working/Projecat
-!python model/train.py --backbone efficientnet --stn --augment-level strong --beam --checkpoint-name best_model.pt --final-checkpoint-name final_model.pt
+import os, shlex
+
+cmd = [
+    "python", "model/train.py",
+    "--backbone", "efficientnet",
+    "--stn",
+    "--augment-level", "strong",
+    "--greedy",
+    "--checkpoint-name", "best_model.pt",
+    "--final-checkpoint-name", "final_model.pt",
+]
+
+if os.getenv("GITHUB_TOKEN"):
+    cmd += [
+        "--push-best-to-github",
+        "--push-after-epoch", "10",
+        "--push-every-n-epochs", "10",
+        "--github-repository", "anonjj/prescription-ocr",
+        "--github-branch", "main",
+        "--github-push-path", "checkpoint_exports/best_model.pt",
+    ]
+    print("GitHub checkpoint backup: enabled")
+else:
+    print("GitHub checkpoint backup: disabled (GITHUB_TOKEN missing)")
+
+cmd_str = " ".join(shlex.quote(part) for part in cmd)
+print(cmd_str)
+!{cmd_str}
 """
 
 # ============================================================
@@ -267,6 +319,7 @@ if __name__ == "__main__":
     print()
     print("  Checkpoint location: /kaggle/working/Projecat/models/checkpoints/")
     print("  - best_model.pt / final_model.pt")
+    print("  Optional GitHub backup: checkpoint_exports/best_model.pt every 10 epochs")
     print("  Verify files in Cell 6A before using Save Version")
     print()
     print("  To resume across sessions: see CELL 8")
