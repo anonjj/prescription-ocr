@@ -15,6 +15,7 @@ from config import PROCESSED_DIR, TRAIN_RATIO, VAL_RATIO
 FINETUNE_SOURCES = [
     "rxhandbd",
     "prescription_bd",
+    "doctors-handwritten-prescription-bd-dataset",
 ]
 
 

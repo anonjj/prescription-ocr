@@ -60,13 +60,17 @@ except ImportError:
 if UserSecretsClient is None:
     print("kaggle_secrets unavailable — GitHub auto-push disabled")
 else:
-    secrets = UserSecretsClient()
-    os.environ["GITHUB_TOKEN"] = secrets.get_secret("GITHUB_TOKEN")
-    os.environ["GITHUB_REPOSITORY"] = "anonjj/prescription-ocr"
-    os.environ["GITHUB_BRANCH"] = "main"
-    os.environ["GITHUB_COMMIT_NAME"] = "Kaggle Checkpoint Bot"
-    os.environ["GITHUB_COMMIT_EMAIL"] = "checkpoint-bot@users.noreply.github.com"
-    print("GitHub checkpoint backup configured")
+    try:
+        secrets = UserSecretsClient()
+        os.environ["GITHUB_TOKEN"] = secrets.get_secret("GITHUB_TOKEN")
+    except Exception as exc:
+        print(f"GitHub auto-push disabled: could not load GITHUB_TOKEN ({exc})")
+    else:
+        os.environ["GITHUB_REPOSITORY"] = "anonjj/prescription-ocr"
+        os.environ["GITHUB_BRANCH"] = "main"
+        os.environ["GITHUB_COMMIT_NAME"] = "Kaggle Checkpoint Bot"
+        os.environ["GITHUB_COMMIT_EMAIL"] = "checkpoint-bot@users.noreply.github.com"
+        print("GitHub checkpoint backup configured")
 """
 
 # ============================================================
@@ -81,6 +85,7 @@ import shutil
 REPO_DIR = '/kaggle/working/Projecat'
 REPO_URL = 'https://github.com/anonjj/prescription-ocr.git'
 PARENT_DIR = '/kaggle/working'
+CHECKPOINT_BACKUP_DIR = '/kaggle/working/_checkpoint_restore'
 
 git_dir = os.path.join(REPO_DIR, '.git')
 os.makedirs(PARENT_DIR, exist_ok=True)
@@ -92,8 +97,22 @@ if os.path.isdir(git_dir):
 else:
     if os.path.exists(REPO_DIR):
         print("Existing directory is not a git repo. Removing it and cloning a fresh copy...")
+        old_ckpt_dir = os.path.join(REPO_DIR, 'models', 'checkpoints')
+        if os.path.exists(old_ckpt_dir):
+            if os.path.exists(CHECKPOINT_BACKUP_DIR):
+                shutil.rmtree(CHECKPOINT_BACKUP_DIR)
+            shutil.copytree(old_ckpt_dir, CHECKPOINT_BACKUP_DIR)
+            print(f"Preserved checkpoints at {CHECKPOINT_BACKUP_DIR}")
         shutil.rmtree(REPO_DIR)
     !git clone {REPO_URL} {REPO_DIR}
+
+if os.path.exists(CHECKPOINT_BACKUP_DIR):
+    restored_ckpt_dir = os.path.join(REPO_DIR, 'models', 'checkpoints')
+    os.makedirs(restored_ckpt_dir, exist_ok=True)
+    for name in os.listdir(CHECKPOINT_BACKUP_DIR):
+        shutil.copy2(os.path.join(CHECKPOINT_BACKUP_DIR, name), restored_ckpt_dir)
+    print(f"Restored checkpoints into {restored_ckpt_dir}")
+    shutil.rmtree(CHECKPOINT_BACKUP_DIR)
 
 %cd {REPO_DIR}
 !ls

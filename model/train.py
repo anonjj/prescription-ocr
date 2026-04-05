@@ -14,7 +14,6 @@ import os
 import sys
 import time
 import argparse
-import shutil
 import subprocess
 import torch
 import torch.nn as nn
@@ -119,7 +118,23 @@ def push_checkpoint_to_github(checkpoint_path: str, epoch_num: int, best_cer: fl
     rel_push_path = github_push_path.strip().lstrip("/")
     dest_path = os.path.join(PROJECT_ROOT, rel_push_path)
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-    shutil.copy2(checkpoint_path, dest_path)
+
+    # Keep GitHub backups small enough to push reliably without Git LFS.
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    slim_checkpoint = {
+        "epoch": checkpoint.get("epoch", epoch_num - 1),
+        "model_state_dict": checkpoint["model_state_dict"],
+        "best_cer": checkpoint.get("best_cer", best_cer),
+        "backbone": checkpoint.get("backbone"),
+        "seq_model": checkpoint.get("seq_model"),
+        "use_stn": checkpoint.get("use_stn"),
+        "finetune": checkpoint.get("finetune", False),
+        "train_csv": checkpoint.get("train_csv"),
+        "val_csv": checkpoint.get("val_csv"),
+        "checkpoint_name": checkpoint.get("checkpoint_name"),
+        "final_checkpoint_name": checkpoint.get("final_checkpoint_name"),
+    }
+    torch.save(slim_checkpoint, dest_path)
 
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
